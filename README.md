@@ -592,8 +592,11 @@ Do not report security vulnerabilities through public GitHub issues. See [`SECUR
 See [`LICENSE`](LICENSE).
 
 ---
+## Authors
 
-## Author
+- **Rayan Mohammed Rafeeq** — [GitHub](https://github.com/Rayan-Mohammed-Rafeeq)
+- **Hemanth Kumar** — [GitHub](https://github.com/hemanth-kumar-n-1)
+- **Sumit Patil** — [GitHub](https://github.com/sumitpatil93463-png)
+- **Rakshith Y** — [GitHub](https://github.com/rakshithy3185)
 
-**GitHub:** [<YOUR_GITHUB_USERNAME>](https://github.com/<YOUR_GITHUB_USERNAME>)
 **Project:** Intriqo
