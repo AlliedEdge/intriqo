@@ -1,0 +1,277 @@
+# =============================================================================
+# Intriqo — .gitignore
+# Stack: Java 21, Spring Boot, Gradle, Lombok, PostgreSQL, Redis, Kafka,
+#         Flyway, React/TypeScript/Vite, Python (ml/), Docker
+# =============================================================================
+
+
+# =============================================================================
+# Java
+# =============================================================================
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.zip
+*.tar.gz
+*.rar
+
+hs_err_pid*
+replay_pid*
+
+
+# =============================================================================
+# Gradle
+# =============================================================================
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+gradle-app.setting
+.gradletasknamecache
+
+
+# =============================================================================
+# Spring Boot
+# =============================================================================
+# Spring Boot packaged executable jar
+spring-shell.log
+
+# Active Spring profiles local override — never commit local secrets
+application-local.yml
+application-local.yaml
+application-local.properties
+
+
+# =============================================================================
+# Secrets and environment — NEVER commit these
+# =============================================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+*.truststore
+secrets/
+credentials/
+
+
+# =============================================================================
+# IDE — IntelliJ IDEA
+# =============================================================================
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+!.idea/modules.xml
+!.idea/runConfigurations/
+
+# IntelliJ shelf
+.shelf/
+
+
+# =============================================================================
+# IDE — VS Code
+# =============================================================================
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+
+# =============================================================================
+# IDE — Eclipse
+# =============================================================================
+.classpath
+.project
+.settings/
+.factorypath
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+
+# =============================================================================
+# IDE — NetBeans
+# =============================================================================
+nbproject/private/
+nbbuild/
+nbdist/
+.nb-gradle/
+
+
+# =============================================================================
+# Node.js / npm / pnpm / yarn (frontend/)
+# =============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# Build output
+frontend/intriqo-dashboard/dist/
+frontend/intriqo-dashboard/.vite/
+frontend/intriqo-dashboard/build/
+
+# Env files in frontend
+frontend/**/.env
+frontend/**/.env.*
+!frontend/**/.env.example
+
+# TypeScript build info
+*.tsbuildinfo
+
+
+# =============================================================================
+# Python (ml/)
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Virtual environments
+ml/.venv/
+ml/venv/
+ml/env/
+.venv/
+venv/
+env/
+
+# Distribution / packaging
+ml/*.egg-info/
+ml/dist/
+ml/build/
+*.egg
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+ml/**/.ipynb_checkpoints/
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# mypy
+.mypy_cache/
+
+# Trained model artifacts — large binary files; use Git LFS or model registry
+ml/models/*.pkl
+ml/models/*.joblib
+ml/models/*.h5
+ml/models/*.pt
+ml/models/*.pth
+ml/models/*.bin
+ml/models/*.onnx
+# Keep the directory itself
+!ml/models/.gitkeep
+
+
+# =============================================================================
+# Docker
+# =============================================================================
+# Local override compose files containing secrets
+docker-compose.override.yml
+docker-compose.local.yml
+
+
+# =============================================================================
+# Datasets and PCAPs — typically large binary/data files
+# Use Git LFS or external storage for real datasets
+# =============================================================================
+datasets/*.csv
+datasets/*.json
+datasets/*.parquet
+datasets/*.pcap
+datasets/*.pcapng
+datasets/*.zip
+datasets/*.gz
+datasets/*.tar
+pcaps/*.pcap
+pcaps/*.pcapng
+pcaps/*.cap
+
+
+# =============================================================================
+# Logs
+# =============================================================================
+*.log
+logs/
+log/
+/tmp/
+
+
+# =============================================================================
+# OS
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.TemporaryItems
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+
+# =============================================================================
+# Load tests and benchmark results
+# Scenarios are committed; raw result files are typically large
+# =============================================================================
+load-tests/results/*.json
+load-tests/results/*.csv
+load-tests/results/*.xml
+load-tests/results/*.html
+
+
+# =============================================================================
+# Test reports and coverage
+# =============================================================================
+**/test-results/
+**/TEST-*.xml
+**/surefire-reports/
+build/reports/
+build/jacoco/
+
+
+# =============================================================================
+# Miscellaneous
+# =============================================================================
+*.swp
+*.swo
+*.orig
+*.bak
+*.tmp
+.cache/
