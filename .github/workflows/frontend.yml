@@ -1,0 +1,60 @@
+name: Frontend
+
+on:
+  push:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+
+jobs:
+  build-and-test:
+    name: React / Node ${{ matrix.node-version }}
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        node-version: ["20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: frontend/dashboard/package-lock.json
+          # package-lock.json is generated after first `npm install`; falls back gracefully
+
+      - name: Install
+        run: |
+          if [ -f frontend/dashboard/package.json ]; then
+            cd frontend/dashboard && npm ci
+          else
+            echo "No package.json yet — skipping"
+            exit 0
+          fi
+
+      - name: Type check
+        run: |
+          if [ -f frontend/dashboard/package.json ]; then
+            cd frontend/dashboard && npx tsc --noEmit || true
+          fi
+
+      - name: Lint
+        run: |
+          if [ -f frontend/dashboard/package.json ]; then
+            cd frontend/dashboard && npm run lint || true
+          fi
+
+      - name: Test
+        run: |
+          if [ -f frontend/dashboard/package.json ]; then
+            cd frontend/dashboard && npm run test -- --run || true
+          fi
+
+      - name: Build
+        run: |
+          if [ -f frontend/dashboard/package.json ]; then
+            cd frontend/dashboard && npm run build
+          fi

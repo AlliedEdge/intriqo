@@ -1,0 +1,104 @@
+version: '3.8'
+
+# Intriqo Controlled Security Lab
+# 
+# This environment provides an isolated network for testing detection capabilities.
+# All attack scenarios operate within this controlled environment.
+
+services:
+  # Attacker machine - simulates malicious actor
+  attacker:
+    build:
+      context: ./containers/attacker
+      dockerfile: Dockerfile
+    container_name: intriqo-attacker
+    hostname: attacker
+    networks:
+      lab_network:
+        ipv4_address: 172.20.0.10
+    volumes:
+      - ./attack-scenarios:/scenarios:ro
+      - ./pcaps:/pcaps
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    command: tail -f /dev/null  # Keep container running
+    
+  # Victim hosts - simulate internal infrastructure
+  victim-web:
+    build:
+      context: ./containers/victim
+      dockerfile: Dockerfile
+    container_name: intriqo-victim-web
+    hostname: victim-web
+    networks:
+      lab_network:
+        ipv4_address: 172.20.0.20
+    environment:
+      - SERVICE_TYPE=web
+      - EXPOSED_PORTS=80,443,8080,8443
+    
+  victim-db:
+    build:
+      context: ./containers/victim
+      dockerfile: Dockerfile
+    container_name: intriqo-victim-db
+    hostname: victim-db
+    networks:
+      lab_network:
+        ipv4_address: 172.20.0.21
+    environment:
+      - SERVICE_TYPE=database
+      - EXPOSED_PORTS=3306,5432,27017,6379
+      
+  victim-ssh:
+    build:
+      context: ./containers/victim
+      dockerfile: Dockerfile
+    container_name: intriqo-victim-ssh
+    hostname: victim-ssh
+    networks:
+      lab_network:
+        ipv4_address: 172.20.0.22
+    environment:
+      - SERVICE_TYPE=ssh
+      - EXPOSED_PORTS=22,2222
+      
+  victim-app:
+    build:
+      context: ./containers/victim
+      dockerfile: Dockerfile
+    container_name: intriqo-victim-app
+    hostname: victim-app
+    networks:
+      lab_network:
+        ipv4_address: 172.20.0.23
+    environment:
+      - SERVICE_TYPE=application
+      - EXPOSED_PORTS=8000,8001,8002,8003,8004,8005
+      
+  # Traffic capture - monitors all lab traffic
+  traffic-monitor:
+    build:
+      context: ./containers/monitor
+      dockerfile: Dockerfile
+    container_name: intriqo-traffic-monitor
+    hostname: monitor
+    networks:
+      lab_network:
+        ipv4_address: 172.20.0.100
+    volumes:
+      - ./pcaps:/pcaps
+      - ./traffic-data:/data
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    command: tail -f /dev/null
+
+networks:
+  lab_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+          gateway: 172.20.0.1

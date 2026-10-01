@@ -1,0 +1,84 @@
+# =============================================================================
+# Intriqo — .dockerignore
+# Keeps Docker build contexts lean and prevents secret/credential leakage.
+# =============================================================================
+
+# Version control
+.git/
+.github/
+.gitignore
+.gitattributes
+
+# C++ build output (rebuilt inside the container)
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+*.o
+*.a
+*.so
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+*.egg-info/
+
+# Node / frontend build artefacts
+node_modules/
+frontend/**/dist/
+frontend/**/.vite/
+frontend/**/coverage/
+*.tsbuildinfo
+
+# ML large artifacts
+ml/models/*.pkl
+ml/models/*.pt
+ml/models/*.pth
+ml/models/*.onnx
+ml/models/*.bin
+ml/models/*.safetensors
+ml/datasets/raw/
+ml/experiments/
+
+# Secrets — never sent to daemon
+.env
+.env.*
+*.pem
+*.key
+secrets/
+credentials/
+
+# IDE / OS noise
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Documentation and tests (not needed at runtime)
+docs/
+tests/
+benchmarks/
+security-lab/
+datasets/
+pcaps/
+
+# Logs
+*.log
+logs/
+
+# Temporary
+tmp/
+temp/
+.cache/

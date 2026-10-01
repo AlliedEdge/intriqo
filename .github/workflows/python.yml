@@ -1,0 +1,67 @@
+name: Python
+
+on:
+  push:
+    paths:
+      - "agents/**"
+      - "control-plane/**"
+      - ".github/workflows/python.yml"
+  pull_request:
+    paths:
+      - "agents/**"
+      - "control-plane/**"
+
+jobs:
+  agents:
+    name: Agents / Python ${{ matrix.python-version }}
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: pip install -e "agents/[dev]"
+
+      - name: Ruff
+        run: cd agents && ruff check src/ tests/
+
+      - name: Mypy
+        run: cd agents && mypy src/
+
+      - name: Pytest
+        run: cd agents && python -m pytest tests/ -v --tb=short --cov=src --cov-report=term-missing
+
+  control-plane:
+    name: Control Plane / Python ${{ matrix.python-version }}
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: |
+          if [ -f control-plane/pyproject.toml ]; then
+            pip install -e "control-plane/[dev]"
+          fi
+
+      - name: Test
+        run: |
+          if [ -d control-plane/tests ] && [ "$(ls -A control-plane/tests)" ]; then
+            cd control-plane && python -m pytest tests/ -v --tb=short
+          else
+            echo "No control-plane tests yet."
+          fi

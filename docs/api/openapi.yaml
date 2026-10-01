@@ -1,0 +1,35 @@
+openapi: 3.0.3
+info:
+  title: Intriqo Control Plane API
+  description: Autonomous Multi-Agent SOC Control Plane API
+  version: 0.1.0
+paths:
+  /api/v1/health:
+    get:
+      summary: System Health Check
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  version:
+                    type: string
+                    example: 0.1.0
+  /api/v1/incidents:
+    get:
+      summary: List Active Incidents
+      responses:
+        '200':
+          description: List of incidents
+  /api/v1/events:
+    post:
+      summary: Ingest Security Event from Engine
+      responses:
+        '202':
+          description: Event accepted for processing

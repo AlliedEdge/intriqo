@@ -1,0 +1,91 @@
+# =============================================================================
+# Intriqo — .gitattributes
+# Normalises line endings and marks binary files for Git LFS candidates.
+# =============================================================================
+
+# Default: normalise all text files to LF in the repo
+*           text=auto eol=lf
+
+# Shell scripts must be LF on disk (they run on Linux/macOS)
+*.sh        text eol=lf
+
+# Windows scripts may keep CRLF
+*.bat       text eol=crlf
+*.ps1       text eol=crlf
+
+# C / C++ sources
+*.c         text eol=lf
+*.cc        text eol=lf
+*.cpp       text eol=lf
+*.cxx       text eol=lf
+*.h         text eol=lf
+*.hpp       text eol=lf
+*.hxx       text eol=lf
+
+# Python
+*.py        text eol=lf
+*.pyi       text eol=lf
+
+# TypeScript / JavaScript
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.jsx       text eol=lf
+
+# Configuration / data
+*.json      text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.toml      text eol=lf
+*.ini       text eol=lf
+*.cfg       text eol=lf
+*.conf      text eol=lf
+*.env       text eol=lf
+*.xml       text eol=lf
+*.sql       text eol=lf
+
+# Documentation
+*.md        text eol=lf
+*.rst       text eol=lf
+*.txt       text eol=lf
+
+# CMake
+CMakeLists.txt  text eol=lf
+*.cmake         text eol=lf
+
+# Binary files — do not diff / mangle
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.svg       text eol=lf
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.eot       binary
+
+# Archives
+*.zip       binary
+*.tar       binary
+*.gz        binary
+*.bz2       binary
+*.xz        binary
+
+# ML model artifacts — mark as binary and Git LFS candidates
+*.pkl       binary
+*.joblib    binary
+*.h5        binary
+*.pt        binary
+*.pth       binary
+*.onnx      binary
+*.bin       binary
+*.safetensors binary
+
+# PCAP files — Git LFS candidates
+*.pcap      binary
+*.pcapng    binary
+*.cap       binary
+
+# PDF
+*.pdf       binary

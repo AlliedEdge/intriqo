@@ -1,0 +1,40 @@
+{
+  "name": "Intriqo Dev",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": { "version": "3.12" },
+    "ghcr.io/devcontainers/features/node:1":   { "version": "20" },
+    "ghcr.io/devcontainers/features/cmake:1":  { "version": "latest" },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+
+  "postCreateCommand": "pip install --upgrade pip && pip install -e 'agents/[dev]' && pip install -e 'control-plane/[dev]'",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-vscode.cpptools",
+        "twxs.cmake",
+        "ms-vscode.cmake-tools",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss",
+        "charliermarsh.ruff",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "editor.formatOnSave": true,
+        "editor.rulers": [100],
+        "[python]": { "editor.defaultFormatter": "charliermarsh.ruff" },
+        "[cpp]":    { "editor.defaultFormatter": "ms-vscode.cpptools" }
+      }
+    }
+  },
+
+  "forwardPorts": [8000, 5173, 9090, 3000],
+  "remoteUser": "vscode"
+}

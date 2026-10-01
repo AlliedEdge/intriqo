@@ -1,0 +1,117 @@
+{
+  "source": "security-lab/pcaps/normal_web_traffic.pcap",
+  "extractedAt": "2026-09-12T14:25:00Z",
+  "flowCount": 10,
+  "flows": [
+    {
+      "timestamp": "2026-09-12T14:25:00Z",
+      "sourceAddress": "172.20.0.10",
+      "destinationAddress": "172.20.0.20",
+      "sourcePort": 51000,
+      "destinationPort": 80,
+      "protocol": "TCP",
+      "packetCount": 100,
+      "byteCount": 35000,
+      "durationMillis": 2500
+    },
+    {
+      "timestamp": "2026-09-12T14:25:01Z",
+      "sourceAddress": "172.20.0.10",
+      "destinationAddress": "172.20.0.20",
+      "sourcePort": 51001,
+      "destinationPort": 80,
+      "protocol": "TCP",
+      "packetCount": 85,
+      "byteCount": 28000,
+      "durationMillis": 2100
+    },
+    {
+      "timestamp": "2026-09-12T14:25:02Z",
+      "sourceAddress": "172.20.0.10",
+      "destinationAddress": "172.20.0.20",
+      "sourcePort": 51002,
+      "destinationPort": 80,
+      "protocol": "TCP",
+      "packetCount": 92,
+      "byteCount": 31000,
+      "durationMillis": 2300
+    },
+    {
+      "timestamp": "2026-09-12T14:25:03Z",
+      "sourceAddress": "172.20.0.10",
+      "destinationAddress": "172.20.0.20",
+      "sourcePort": 51003,
+      "destinationPort": 80,
+      "protocol": "TCP",
+      "packetCount": 110,
+      "byteCount": 40000,
+      "durationMillis": 3000
+    },
+    {
+      "timestamp": "2026-09-12T14:25:04Z",
+      "sourceAddress": "172.20.0.10",
+      "destinationAddress": "172.20.0.20",
+      "sourcePort": 51004,
+      "destinationPort": 80,
+      "protocol": "TCP",
+      "packetCount": 78,
+      "byteCount": 24000,
+      "durationMillis": 1900
+    },
+    {
+      "timestamp": "2026-09-12T14:25:05Z",
+      "sourceAddress": "172.20.0.10",
+      "destinationAddress": "172.20.0.20",
+      "sourcePort": 51005,
+      "destinationPort": 443,
+      "protocol": "TCP",
+      "packetCount": 150,
+      "byteCount": 55000,
+      "durationMillis": 4000
+    },
+    {
+      "timestamp": "2026-09-12T14:25:06Z",
+      "sourceAddress": "172.20.0.10",
+      "destinationAddress": "172.20.0.20",
+      "sourcePort": 51006,
+      "destinationPort": 443,
+      "protocol": "TCP",
+      "packetCount": 140,
+      "byteCount": 51000,
+      "durationMillis": 3800
+    },
+    {
+      "timestamp": "2026-09-12T14:25:07Z",
+      "sourceAddress": "172.20.0.10",
+      "destinationAddress": "172.20.0.20",
+      "sourcePort": 51007,
+      "destinationPort": 443,
+      "protocol": "TCP",
+      "packetCount": 160,
+      "byteCount": 59000,
+      "durationMillis": 4200
+    },
+    {
+      "timestamp": "2026-09-12T14:25:08Z",
+      "sourceAddress": "172.20.0.10",
+      "destinationAddress": "172.20.0.20",
+      "sourcePort": 51008,
+      "destinationPort": 443,
+      "protocol": "TCP",
+      "packetCount": 135,
+      "byteCount": 49000,
+      "durationMillis": 3600
+    },
+    {
+      "timestamp": "2026-09-12T14:25:09Z",
+      "sourceAddress": "172.20.0.10",
+      "destinationAddress": "172.20.0.20",
+      "sourcePort": 51009,
+      "destinationPort": 443,
+      "protocol": "TCP",
+      "packetCount": 145,
+      "byteCount": 53000,
+      "durationMillis": 3900
+    }
+  ]
+}

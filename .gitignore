@@ -1,109 +1,91 @@
 # =============================================================================
 # Intriqo — .gitignore
-# Stack: Java 21, Spring Boot, Gradle, Lombok, PostgreSQL, Redis, Kafka,
-#         Flyway, React/TypeScript/Vite, Python (ml/), Docker
+# Stack: C++ (CMake), Python (FastAPI / agents), React/TypeScript/Vite, Docker
 # =============================================================================
 
 
 # =============================================================================
-# Java
+# C++ / CMake
 # =============================================================================
-*.class
-*.jar
-*.war
-*.ear
-*.nar
-*.zip
-*.tar.gz
-*.rar
-
-hs_err_pid*
-replay_pid*
-
-
-# =============================================================================
-# Gradle
-# =============================================================================
-.gradle/
 build/
-!gradle/wrapper/gradle-wrapper.jar
-!**/src/main/**/build/
-!**/src/test/**/build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+CMakeUserPresets.json
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.pdb
+*.ilk
+*.exp
+*.lib
+# Generated headers / sources
+engine/include/intriqo/version.hpp.in.generated
+engine/src/generated/
 
-gradle-app.setting
-.gradletasknamecache
-
-
-# =============================================================================
-# Spring Boot
-# =============================================================================
-# Spring Boot packaged executable jar
-spring-shell.log
-
-# Active Spring profiles local override — never commit local secrets
-application-local.yml
-application-local.yaml
-application-local.properties
-
-
-# =============================================================================
-# Secrets and environment — NEVER commit these
-# =============================================================================
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-*.p12
-*.jks
-*.keystore
-*.truststore
-secrets/
-credentials/
+# CMake install prefix (local dev installs)
+install/
+dist_cpp/
 
 
 # =============================================================================
-# IDE — IntelliJ IDEA
+# Python
 # =============================================================================
-.idea/
-*.iws
-*.iml
-*.ipr
-out/
-!.idea/modules.xml
-!.idea/runConfigurations/
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
 
-# IntelliJ shelf
-.shelf/
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env.venv/
 
+# Packaging / distribution
+dist/
+*.egg-info/
+*.egg
+.eggs/
+MANIFEST
 
-# =============================================================================
-# IDE — VS Code
-# =============================================================================
-.vscode/
-!.vscode/extensions.json
-!.vscode/settings.json.example
+# pytest / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+nosetests.xml
+coverage.xml
+*.cover
 
+# Type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyright/
 
-# =============================================================================
-# IDE — Eclipse
-# =============================================================================
-.classpath
-.project
-.settings/
-.factorypath
-bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
+# Linters
+.ruff_cache/
 
+# Jupyter notebooks
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
 
-# =============================================================================
-# IDE — NetBeans
-# =============================================================================
-nbproject/private/
-nbbuild/
-nbdist/
-.nb-gradle/
+# pyenv
+.python-version
 
 
 # =============================================================================
@@ -121,56 +103,22 @@ pnpm-debug.log*
 .yarn/install-state.gz
 .pnp.*
 
-# Build output
-frontend/intriqo-dashboard/dist/
-frontend/intriqo-dashboard/.vite/
-frontend/intriqo-dashboard/build/
-
-# Env files in frontend
-frontend/**/.env
-frontend/**/.env.*
-!frontend/**/.env.example
+# Frontend build output
+frontend/**/dist/
+frontend/**/.vite/
+frontend/**/build/
+frontend/**/.next/
+frontend/**/.nuxt/
+frontend/**/coverage/
 
 # TypeScript build info
 *.tsbuildinfo
 
 
 # =============================================================================
-# Python (ml/)
+# ML — large binary / experiment artifacts
 # =============================================================================
-__pycache__/
-*.py[cod]
-*$py.class
-*.pyo
-
-# Virtual environments
-ml/.venv/
-ml/venv/
-ml/env/
-.venv/
-venv/
-env/
-
-# Distribution / packaging
-ml/*.egg-info/
-ml/dist/
-ml/build/
-*.egg
-
-# Jupyter Notebooks
-.ipynb_checkpoints/
-ml/**/.ipynb_checkpoints/
-
-# pytest / coverage
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-
-# mypy
-.mypy_cache/
-
-# Trained model artifacts — large binary files; use Git LFS or model registry
+# Trained model artifacts — use Git LFS or a model registry for these
 ml/models/*.pkl
 ml/models/*.joblib
 ml/models/*.h5
@@ -178,33 +126,115 @@ ml/models/*.pt
 ml/models/*.pth
 ml/models/*.bin
 ml/models/*.onnx
-# Keep the directory itself
+ml/models/*.safetensors
 !ml/models/.gitkeep
+
+# Experiment outputs and generated datasets
+ml/experiments/*/output/
+ml/experiments/*/artifacts/
+ml/datasets/raw/*.csv
+ml/datasets/raw/*.json
+ml/datasets/raw/*.parquet
+ml/datasets/raw/*.gz
+ml/datasets/raw/*.tar
+ml/datasets/processed/*.csv
+ml/datasets/processed/*.parquet
+
+# Notebook checkpoints already covered above
+
+
+# =============================================================================
+# Secrets and environment — NEVER commit these
+# =============================================================================
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+*.p12
+*.jks
+*.pfx
+*.keystore
+*.truststore
+secrets/
+credentials/
+local-config/
+*_secret*
+*_secrets*
 
 
 # =============================================================================
 # Docker
 # =============================================================================
-# Local override compose files containing secrets
+# Local override compose files (contain secrets / local paths)
 docker-compose.override.yml
 docker-compose.local.yml
+docker-compose.dev.yml
+
+# Runtime volumes mounted locally
+infrastructure/postgres/data/
+infrastructure/redis/data/
+infrastructure/kafka/data/
+infrastructure/observability/grafana/data/
 
 
 # =============================================================================
-# Datasets and PCAPs — typically large binary/data files
-# Use Git LFS or external storage for real datasets
+# Datasets and PCAPs — large binary/data files
+# Use Git LFS or external storage for real capture files
 # =============================================================================
 datasets/*.csv
 datasets/*.json
 datasets/*.parquet
 datasets/*.pcap
 datasets/*.pcapng
+datasets/*.cap
 datasets/*.zip
 datasets/*.gz
 datasets/*.tar
+
 pcaps/*.pcap
 pcaps/*.pcapng
 pcaps/*.cap
+
+security-lab/pcaps/*.pcap
+security-lab/pcaps/*.pcapng
+security-lab/pcaps/*.cap
+
+
+# =============================================================================
+# IDE — IntelliJ IDEA
+# =============================================================================
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# =============================================================================
+# IDE — VS Code
+# =============================================================================
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.template
+
+# =============================================================================
+# IDE — Eclipse / NetBeans
+# =============================================================================
+.classpath
+.project
+.settings/
+nbproject/private/
+nbbuild/
+nbdist/
+.nb-gradle/
+
+
+# =============================================================================
+# Benchmarks — raw result files are large; scenarios are committed
+# =============================================================================
+benchmarks/*/results/
+tests/performance/results/
 
 
 # =============================================================================
@@ -213,12 +243,15 @@ pcaps/*.cap
 *.log
 logs/
 log/
-/tmp/
 
 
 # =============================================================================
-# OS
+# Temporary / OS
 # =============================================================================
+tmp/
+temp/
+.cache/
+.tmp/
 
 # macOS
 .DS_Store
@@ -245,33 +278,8 @@ $RECYCLE.BIN/
 .Trash-*
 .nfs*
 
-
-# =============================================================================
-# Load tests and benchmark results
-# Scenarios are committed; raw result files are typically large
-# =============================================================================
-load-tests/results/*.json
-load-tests/results/*.csv
-load-tests/results/*.xml
-load-tests/results/*.html
-
-
-# =============================================================================
-# Test reports and coverage
-# =============================================================================
-**/test-results/
-**/TEST-*.xml
-**/surefire-reports/
-build/reports/
-build/jacoco/
-
-
-# =============================================================================
-# Miscellaneous
-# =============================================================================
+# Swap files
 *.swp
 *.swo
 *.orig
 *.bak
-*.tmp
-.cache/

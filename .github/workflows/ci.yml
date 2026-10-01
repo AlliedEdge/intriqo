@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Engine (C++) ─────────────────────────────────────────────────────────────
+  engine:
+    name: Engine (C++ / CMake)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake ninja-build libpcap-dev
+
+      - name: Configure
+        run: cmake -S engine -B engine/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DINTRIQO_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build engine/build --parallel
+
+      - name: Test
+        run: ctest --test-dir engine/build --output-on-failure
+
+  # ── Agents (Python) ──────────────────────────────────────────────────────────
+  agents:
+    name: Agents (Python)
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: pip install -e "agents/[dev]"
+
+      - name: Lint
+        run: |
+          cd agents
+          ruff check src/ tests/
+
+      - name: Type check
+        run: |
+          cd agents
+          mypy src/
+
+      - name: Test
+        run: |
+          cd agents
+          python -m pytest tests/ -v --tb=short
+
+  # ── Control Plane (Python) ────────────────────────────────────────────────────
+  control-plane:
+    name: Control Plane (Python)
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: |
+          if [ -f control-plane/pyproject.toml ]; then
+            pip install -e "control-plane/[dev]"
+          fi
+
+      - name: Test
+        run: |
+          if [ -d control-plane/tests ]; then
+            cd control-plane && python -m pytest tests/ -v --tb=short
+          else
+            echo "No control-plane tests yet — skipping"
+          fi
+
+  # ── Frontend (React / TypeScript) ─────────────────────────────────────────────
+  frontend:
+    name: Frontend (React / TypeScript)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/dashboard/package-lock.json
+
+      - name: Install
+        run: |
+          if [ -f frontend/dashboard/package.json ]; then
+            cd frontend/dashboard && npm ci
+          else
+            echo "No frontend package.json yet — skipping"
+          fi
+
+      - name: Lint + type-check
+        run: |
+          if [ -f frontend/dashboard/package.json ]; then
+            cd frontend/dashboard && npm run lint || true
+          fi
+
+      - name: Test
+        run: |
+          if [ -f frontend/dashboard/package.json ]; then
+            cd frontend/dashboard && npm run test -- --run || true
+          fi

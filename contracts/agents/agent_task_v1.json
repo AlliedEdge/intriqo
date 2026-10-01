@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://intriqo.dev/contracts/agents/agent_task_v1.json",
+  "title": "AgentTask",
+  "description": "A unit of work dispatched by the control plane to the agent platform.",
+  "type": "object",
+  "required": ["task_id", "task_type", "description", "security_event", "priority"],
+  "additionalProperties": false,
+  "properties": {
+    "task_id":     { "type": "string", "minLength": 1 },
+    "task_type":   { "type": "string", "enum": ["INVESTIGATION", "CORRELATION", "THREAT_INTEL", "RESPONSE"] },
+    "description": { "type": "string", "minLength": 1 },
+    "priority":    { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "URGENT"] },
+    "security_event": { "$ref": "../events/security_event_v1.json" },
+    "context": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Additional task context (investigator notes, correlation hints)."
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  }
+}

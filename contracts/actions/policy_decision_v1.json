@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://intriqo.dev/contracts/actions/policy_decision_v1.json",
+  "title": "PolicyDecision",
+  "description": "The deterministic policy engine response to an ActionRequest.",
+  "type": "object",
+  "required": ["decision", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": ["ALLOW", "DENY", "HUMAN_APPROVAL"],
+      "description": "Policy outcome. HUMAN_APPROVAL queues the action for operator review."
+    },
+    "reason":                  { "type": "string", "minLength": 1 },
+    "conditions":              { "type": "object", "additionalProperties": true },
+    "requires_approval_from":  { "type": ["string", "null"], "description": "Role required to approve (e.g. soc_analyst)." }
+  }
+}

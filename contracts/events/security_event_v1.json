@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://intriqo.dev/contracts/events/security_event_v1.json",
+  "title": "SecurityEvent",
+  "description": "A security event emitted by the Intriqo IDS engine. This is the canonical cross-boundary contract between the C++ engine and the Python control plane / agent platform.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "severity",
+    "timestamp",
+    "source_address",
+    "destination_address"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique event identifier (UUID v4 string)."
+    },
+    "event_type": {
+      "type": "string",
+      "minLength": 1,
+      "examples": ["PORT_SCAN", "SYN_FLOOD", "BRUTE_FORCE", "DNS_ANOMALY"],
+      "description": "Detector-specific event type literal. Python consumers map this via EVENT_TYPE_MAP."
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+      "description": "Severity classification assigned by the detector."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of detection (e.g. 2026-09-12T10:00:00.000Z)."
+    },
+    "source_address": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source IP address of the suspicious traffic."
+    },
+    "destination_address": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Destination IP address of the suspicious traffic."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable detection description. Optional."
+    },
+    "details": {
+      "type": "object",
+      "description": "Detector-specific metadata (e.g. port counts, thresholds). Optional.",
+      "additionalProperties": true
+    }
+  }
+}

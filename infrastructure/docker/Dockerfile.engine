@@ -1,0 +1,29 @@
+# Build stage for C++ IDS Engine
+FROM ubuntu:24.04 AS build
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    libpcap-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+COPY engine/ ./engine/
+COPY CMakeLists.txt ./
+
+RUN cmake -B engine/build -S . \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DINTRIQO_BUILD_TESTS=OFF \
+    -DINTRIQO_BUILD_BENCHMARKS=OFF \
+    && cmake --build engine/build -j$(nproc)
+
+FROM ubuntu:24.04 AS runtime
+RUN apt-get update && apt-get install -y \
+    libpcap0.8 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+# Binaries will be copied once runtime executable target is established
+CMD ["/bin/bash"]
