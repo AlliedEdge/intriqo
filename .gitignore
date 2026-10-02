@@ -190,6 +190,7 @@ frontend/**/public/assets/hero/*.jpg
 frontend/**/public/assets/hero/*.webp
 frontend/**/public/assets/hero/*.png
 # Duplicate logo copies (canonical copy lives in assets/branding/)
+# Exception: favicon.svg is intentionally served from public/
 frontend/**/public/intriqo-logo.svg
 
 # =============================================================================

@@ -61,7 +61,7 @@ export function LandingHero() {
               to="/"
               className="nav-brand-link"
               aria-label="Intriqo Home"
-              onClick={handleActionClick}
+              onClick={() => { handleActionClick(); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
               onMouseEnter={handleActionHover}
             >
               <Logo />
@@ -203,9 +203,7 @@ export function LandingHero() {
           </h1>
 
           <p className="hero-description-text">
-            Intriqo is an open-source autonomous, multi-agent SOC. A high-performance
-            C++ IDS turns network traffic into SecurityEvent JSON for the Python
-            control plane, connecting detection, triage, and auditability.
+            An open-source security operations platform for detecting, investigating, and understanding network threats in real time.
           </p>
 
           <div className="hero-cta-group">
@@ -241,17 +239,7 @@ export function LandingHero() {
             </Link>
           </div>
 
-          <div className="hero-checklist">
-            <span className="hero-checklist-item">
-              <Icon name="check" size={14} /> C++ IPv4 & flow detection
-            </span>
-            <span className="hero-checklist-item">
-              <Icon name="check" size={14} /> SecurityEvent JSON contracts
-            </span>
-            <span className="hero-checklist-item">
-              <Icon name="check" size={14} /> Audit-ready workflow
-            </span>
-          </div>
+
         </div>
       </div>
 
