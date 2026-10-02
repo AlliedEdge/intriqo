@@ -1,0 +1,454 @@
+.pelican-scene {
+  --pelican-scene-cyan: #10a9c7;
+  --pelican-scene-cyan-dark: #197b91;
+  --pelican-scene-slate: #2a3d4e;
+  --pelican-scene-ink: #294854;
+  --pelican-scene-muted: #5e7d86;
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 280px;
+  overflow: hidden;
+  border: 1px solid rgba(42, 61, 78, 0.12);
+  border-radius: 24px;
+  background: #dcecee;
+  box-shadow: 0 16px 34px rgba(36, 67, 78, 0.1);
+}
+
+.pelican-scene-sky-background,
+.pelican-scene-water,
+.pelican-scene-water-signals,
+.pelican-scene-fish,
+.pelican-scene-pelican,
+.pelican-scene-event-card,
+.pelican-scene-control-plane {
+  isolation: isolate;
+}
+
+.pelican-scene-sun {
+  fill: #f8e9c9;
+  opacity: 0.86;
+}
+
+.pelican-scene-distant-bank {
+  fill: #b1ced0;
+  opacity: 0.58;
+}
+
+.pelican-scene-mountain-back {
+  fill: #b7d0d1;
+  opacity: 0.3;
+}
+
+.pelican-scene-reeds {
+  fill: none;
+  stroke: rgba(42, 61, 78, 0.38);
+  stroke-linecap: round;
+  stroke-width: 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-sky-grid path {
+  fill: none;
+  stroke: rgba(77, 132, 143, 0.14);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-kicker,
+.pelican-scene-water-note,
+.pelican-scene-fish-tag,
+.pelican-scene-event-card-foot {
+  fill: var(--pelican-scene-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+
+.pelican-scene-sky-note {
+  fill: var(--pelican-scene-ink);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  opacity: 0.72;
+}
+
+.pelican-scene-water-current,
+.pelican-scene-water-shore {
+  fill: none;
+  stroke: rgba(235, 248, 246, 0.46);
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-water-current {
+  stroke-width: 1.25;
+  stroke-dasharray: 1 18 76 14;
+  animation: pelican-scene-water-drift 15s ease-in-out infinite alternate;
+}
+
+.pelican-scene-water-current-two {
+  animation-delay: -5s;
+  opacity: 0.7;
+}
+
+.pelican-scene-water-current-three {
+  animation-delay: -9s;
+  opacity: 0.42;
+}
+
+.pelican-scene-water-shore {
+  stroke: rgba(42, 88, 99, 0.25);
+  stroke-width: 1.5;
+}
+
+.pelican-scene-water-note {
+  fill: rgba(238, 250, 247, 0.7);
+}
+
+.pelican-scene-signal-route,
+.pelican-scene-signal-pulse {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-signal-route {
+  stroke: rgba(16, 169, 199, 0.36);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 8;
+}
+
+.pelican-scene-signal-pulse {
+  stroke: var(--pelican-scene-cyan);
+  stroke-width: 2;
+  stroke-dasharray: 2 22 34 300;
+  opacity: 0;
+}
+
+.pelican-scene-phase-transmit .pelican-scene-signal-pulse {
+  opacity: 0.92;
+  animation: pelican-scene-signal-travel 1.8s linear 1;
+}
+
+.pelican-scene-signal-radar circle,
+.pelican-scene-signal-radar path {
+  fill: none;
+  stroke: var(--pelican-scene-cyan);
+  stroke-width: 1;
+  opacity: 0;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-signal-radar circle:first-child {
+  opacity: 0.14;
+}
+
+.pelican-scene-phase-targeted .pelican-scene-signal-radar circle:nth-child(2),
+.pelican-scene-phase-dive .pelican-scene-signal-radar circle:nth-child(2) {
+  opacity: 0.48;
+}
+
+.pelican-scene-phase-targeted .pelican-scene-signal-radar path,
+.pelican-scene-phase-dive .pelican-scene-signal-radar path {
+  opacity: 0.62;
+}
+
+.pelican-scene-signal-wave {
+  fill: none;
+  stroke: rgba(232, 249, 247, 0.72);
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  opacity: 0.38;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-fish {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 700ms ease, opacity 700ms ease;
+}
+
+.pelican-scene-fish-body {
+  fill: #dcebea;
+  stroke: #56828b;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-fish-tail,
+.pelican-scene-fish-fin {
+  fill: #b3d0d0;
+  stroke: #56828b;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-fish-eye {
+  fill: var(--pelican-scene-slate);
+}
+
+.pelican-scene-fish-highlight {
+  fill: none;
+  stroke: var(--pelican-scene-cyan);
+  stroke-width: 2;
+  stroke-dasharray: 2 7;
+  opacity: 0.38;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-fish-tag {
+  fill: var(--pelican-scene-cyan-dark);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  opacity: 0;
+  transition: opacity 500ms ease;
+}
+
+.pelican-scene-phase-targeted .pelican-scene-fish-2 .pelican-scene-fish-tag,
+.pelican-scene-phase-dive .pelican-scene-fish-2 .pelican-scene-fish-tag {
+  opacity: 0.84;
+}
+
+.pelican-scene-phase-targeted .pelican-scene-fish-2 .pelican-scene-fish-highlight {
+  opacity: 0.9;
+  animation: pelican-scene-target-pulse 1.4s ease-in-out infinite;
+}
+
+.pelican-scene-phase-dive .pelican-scene-fish-2 {
+  opacity: 0.2;
+  transform: translateY(4px) scale(0.86);
+}
+
+.pelican-scene-phase-transmit .pelican-scene-fish-2 {
+  opacity: 0.12;
+}
+
+.pelican-scene-pelican {
+  transform-box: view-box;
+  transform-origin: 426px 276px;
+  transition: transform 1.1s cubic-bezier(0.2, 0.75, 0.3, 1);
+}
+
+.pelican-scene-phase-targeted .pelican-scene-pelican {
+  transform: translate(8px, -3px) rotate(2deg);
+}
+
+.pelican-scene-phase-dive .pelican-scene-pelican {
+  transform: translate(42px, 72px) rotate(10deg) scale(0.96);
+}
+
+.pelican-scene-phase-transmit .pelican-scene-pelican {
+  transform: translate(8px, -3px) rotate(2deg);
+}
+
+.pelican-scene-phase-reset .pelican-scene-pelican {
+  transform: translate(20px, 18px) rotate(5deg) scale(0.97);
+}
+
+.pelican-scene-pelican-shadow {
+  fill: rgba(40, 74, 83, 0.18);
+}
+
+.pelican-scene-pelican-wing {
+  fill: var(--pelican-scene-slate);
+  opacity: 0.96;
+}
+
+.pelican-scene-pelican-neck-bridge {
+  fill: #d5e3e2;
+  stroke: var(--pelican-scene-slate);
+  stroke-width: 2;
+  opacity: 0.92;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-pelican-tail {
+  fill: var(--pelican-scene-slate);
+  opacity: 0.88;
+}
+
+.pelican-scene-pelican-feather {
+  fill: none;
+  stroke: rgba(224, 239, 238, 0.5);
+  stroke-linecap: round;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-pelican-chest-line,
+.pelican-scene-pelican-leg,
+.pelican-scene-pelican-foot {
+  fill: none;
+  stroke: var(--pelican-scene-slate);
+  stroke-linecap: round;
+  stroke-width: 3;
+  opacity: 0.86;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-pelican-signal {
+  fill: var(--pelican-scene-cyan);
+  opacity: 0.9;
+}
+
+.pelican-scene-event-card {
+  transform-box: view-box;
+  transform-origin: 554px 284px;
+  opacity: 0;
+  transition: opacity 500ms ease, transform 1.15s cubic-bezier(0.2, 0.72, 0.28, 1);
+}
+
+.pelican-scene-phase-dive .pelican-scene-event-card {
+  opacity: 1;
+  transform: translate(0, 78px) scale(0.52);
+}
+
+.pelican-scene-phase-transmit .pelican-scene-event-card {
+  opacity: 1;
+  transform: translate(260px, -100px) scale(1);
+}
+
+.pelican-scene-event-card-surface {
+  fill: rgba(248, 252, 250, 0.97);
+  stroke: rgba(16, 169, 199, 0.54);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-event-card-severity {
+  fill: #ff6670;
+}
+
+.pelican-scene-event-card-severity-label {
+  fill: #ff9aa0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.pelican-scene-event-card-title,
+.pelican-scene-control-plane-title {
+  fill: var(--pelican-scene-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.pelican-scene-event-card-meta,
+.pelican-scene-control-plane-meta {
+  fill: var(--pelican-scene-muted);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 10px;
+}
+
+.pelican-scene-event-card-rule {
+  stroke: rgba(42, 61, 78, 0.14);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-event-card-foot {
+  fill: var(--pelican-scene-cyan-dark);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+}
+
+.pelican-scene-control-plane-surface {
+  fill: rgba(232, 244, 243, 0.66);
+  stroke: rgba(42, 61, 78, 0.18);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-control-plane-node {
+  fill: #e8f5f1;
+  stroke: var(--pelican-scene-cyan-dark);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-control-plane-node-core {
+  fill: var(--pelican-scene-cyan);
+}
+
+.pelican-scene-control-plane-orbit {
+  fill: none;
+  stroke: rgba(25, 123, 145, 0.32);
+  stroke-width: 1;
+  stroke-dasharray: 2 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.pelican-scene-control-plane-title {
+  fill: var(--pelican-scene-slate);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+.pelican-scene-control-plane-meta {
+  font-size: 9px;
+  opacity: 0.72;
+}
+
+@keyframes pelican-scene-water-drift {
+  from { transform: translateX(-8px); }
+  to { transform: translateX(8px); }
+}
+
+@keyframes pelican-scene-target-pulse {
+  0%, 100% { opacity: 0.48; }
+  50% { opacity: 1; }
+}
+
+@keyframes pelican-scene-signal-travel {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -360; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pelican-scene *,
+  .pelican-scene *::before,
+  .pelican-scene *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+.pelican-scene-motionless .pelican-scene-water-current,
+.pelican-scene-motionless .pelican-scene-signal-pulse,
+.pelican-scene-motionless .pelican-scene-fish-highlight {
+  animation: none !important;
+}
+
+.pelican-scene-motionless .pelican-scene-event-card {
+  opacity: 1;
+  transform: translate(260px, -100px) scale(1);
+}
+
+.pelican-scene-motionless .pelican-scene-fish-2 .pelican-scene-fish-highlight {
+  opacity: 0.78;
+}
+
+.pelican-scene-motionless .pelican-scene-signal-radar circle:nth-child(2),
+.pelican-scene-motionless .pelican-scene-signal-radar path {
+  opacity: 0.34;
+}
+
+@media (max-width: 560px) {
+  .pelican-scene {
+    min-width: 0;
+    border-radius: 18px;
+  }
+
+  .pelican-scene-kicker,
+  .pelican-scene-water-note {
+    font-size: 8px;
+  }
+}
