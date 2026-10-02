@@ -172,14 +172,14 @@ make test-all
 
 | Layer | Status | Details |
 |---|---|---|
-| **C++ Engine** | 🟡 Interfaces complete | 12 subsystem headers, CMake build, 13 tests passing |
+| **C++ Engine** | 🟢 Phase 2 complete | IPv4 parser, flows, port-scan detection, SecurityEvent JSON, PCAP replay, HTTP sink, 19 tests |
 | **Python Agents** | 🟢 Foundation complete | `intriqo_agents` package, 79 tests passing |
-| **Control Plane** | 🟡 Scaffold complete | FastAPI app, PolicyEngine, engine_client adapter |
+| **Control Plane** | 🟢 Phase 1 complete | FastAPI, PostgreSQL persistence, JWT/RBAC, events, incidents, tasks, findings, audit logs |
 | **Frontend** | 🟡 Structure complete | Vite + React 18, SOC feature dirs, routing shell |
 | **Contracts** | 🟢 Complete | 5 JSON Schema files across all boundaries |
 | **CI / Tooling** | 🟢 Complete | cpp, python, frontend, security workflows |
 
-**Not yet implemented:** C++ subsystem implementations · control plane REST routes + repositories · JWT auth · real agent tools · correlation/threat-intel/response agents · LLM integration · frontend features · Kafka (deferred).
+**Not yet implemented:** autonomous agent execution · correlation/threat-intel/response agents · LLM integration · frontend features · live packet capture · Kafka (deferred).
 
 ---
 
