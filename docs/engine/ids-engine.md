@@ -8,7 +8,7 @@
 
 The C++ IDS engine is the high-performance detection core of Intriqo. It handles everything that must operate at or near network line rate — from raw packet capture through flow construction, feature extraction, and detection — producing structured `SecurityEvent` JSON that the Python control plane consumes.
 
-> **Status:** Subsystem header interfaces complete. Implementations in progress.
+> **Status:** Phase 2 foundation and the authenticated HTTP event-delivery path are implemented. The real-process vertical slice is exercised by `tests/e2e/test_vertical_slice.py`.
 
 ---
 
@@ -283,7 +283,7 @@ flowchart LR
 
 | Layer | Mechanism | Status |
 |---|---|---|
-| **Rule-based** | Explicit pattern matching — deterministic, auditable | Interfaces complete, implementations planned |
+| **Rule-based** | Explicit pattern matching — deterministic, auditable | `PortScanDetector` implemented |
 | **Statistical** | Sliding window counters, baseline deviation, frequency analysis | Interfaces complete |
 | **ML inference** | ONNX Runtime C++ — trained classifiers for novel patterns | Planned |
 
@@ -291,7 +291,7 @@ flowchart LR
 
 | Detector | Detection Method | Trigger |
 |---|---|---|
-| `PortScanDetector` | Count distinct dst_ports per src_ip within time window | ≥ N ports in T seconds |
+| `PortScanDetector` | Count distinct dst_ports per src_ip within time window | ≥ N ports in T seconds — implemented |
 | `BruteForceDetector` | Count failed auth flows per src_ip → target | ≥ N failures in T seconds |
 | `SynFloodDetector` | Count SYN-only flows (no established state) | SYN/ACK ratio below threshold |
 | `DnsAnomalyDetector` | Query rate, response size, entropy of queried names | Statistical deviation from baseline |
@@ -310,12 +310,40 @@ sequenceDiagram
 
     E->>J: SecurityEvent struct
     J-->>E: JSON string (security_event_v1.json)
-    E->>CP: HTTP POST /api/v1/events
+    E->>CP: HTTP POST /api/v1/events + Bearer JWT
     CP->>CP: parse_engine_event(payload) — validate + normalise
     CP->>A: SecurityEvent (Python domain model)
 ```
 
 The engine has **no knowledge** of Python, agents, or business logic. It emits JSON and the boundary adapter owns translation.
+
+## Verified Phase 3 Vertical Slice
+
+The C++ demo reads `INTRIQO_CONTROL_PLANE_URL`, `INTRIQO_CONTROL_PLANE_ENDPOINT`
+(default `/api/v1/events`), and `INTRIQO_CONTROL_PLANE_TOKEN`. The token is a
+JWT for a clearly identified `AGENT` service identity created through the
+existing authentication API; no credentials are compiled into the engine.
+
+The demo sends its detector-generated event directly to FastAPI. The Phase 3
+test then uses the existing analyst-authorized APIs to create an Incident and
+AgentTask, submits deterministic demo evidence as a Finding, and verifies the
+four corresponding audit actions in PostgreSQL. It does not add automatic
+correlation or autonomous agent execution.
+
+```bash
+docker compose up -d postgres
+cd control-plane
+.venv/bin/alembic upgrade head
+.venv/bin/uvicorn intriqo.api.app:app --host 127.0.0.1 --port 8000
+
+# In another terminal, after registering/logging in an AGENT service identity:
+INTRIQO_CONTROL_PLANE_URL=http://127.0.0.1:8000 \
+INTRIQO_CONTROL_PLANE_TOKEN="$IDS_ENGINE_JWT" \
+./engine/build/intriqo_port_scan_demo
+
+# Full real-process verification (starts its own FastAPI process on port 8765):
+control-plane/.venv/bin/pytest tests/e2e/test_vertical_slice.py -q
+```
 
 ---
 
@@ -340,6 +368,12 @@ cmake --build engine/build --parallel
 # Or via Makefile
 make engine-build
 make engine-test
+
+# Run the synthetic detector demo. With these variables it delivers to FastAPI;
+# without them it writes JSONL to port-scan-events.jsonl.
+INTRIQO_CONTROL_PLANE_URL=http://127.0.0.1:8000 \
+INTRIQO_CONTROL_PLANE_TOKEN="$TOKEN" \
+./engine/build/intriqo_port_scan_demo
 ```
 
 ### CMake Options
