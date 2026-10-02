@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from intriqo.api.v1 import events, incidents, agent_tasks, findings, auth
+from intriqo.api.v1 import agent_tasks, audit, auth, events, findings, incidents
 
 v1_router = APIRouter(prefix="/api/v1")
 
@@ -13,3 +13,4 @@ v1_router.include_router(events.router,      tags=["events"])
 v1_router.include_router(incidents.router,   tags=["incidents"])
 v1_router.include_router(agent_tasks.router, tags=["agent-tasks"])
 v1_router.include_router(findings.router,    tags=["findings"])
+v1_router.include_router(audit.router,       tags=["audit"])
