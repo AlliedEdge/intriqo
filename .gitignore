@@ -180,6 +180,19 @@ infrastructure/observability/grafana/data/
 
 
 # =============================================================================
+# Frontend public media assets — large binaries served from CDN / external storage
+# Posters and video files are not committed; reference them via URL or CDN in code
+# =============================================================================
+frontend/**/public/assets/hero/*.mp4
+frontend/**/public/assets/hero/*.webm
+frontend/**/public/assets/hero/*.mov
+frontend/**/public/assets/hero/*.jpg
+frontend/**/public/assets/hero/*.webp
+frontend/**/public/assets/hero/*.png
+# Duplicate logo copies (canonical copy lives in assets/branding/)
+frontend/**/public/intriqo-logo.svg
+
+# =============================================================================
 # Datasets and PCAPs — large binary/data files
 # Use Git LFS or external storage for real capture files
 # =============================================================================
