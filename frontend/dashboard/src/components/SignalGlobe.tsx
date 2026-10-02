@@ -19,7 +19,7 @@ const globeConfig = {
   markers:        [] as { location: [number,number]; size: number }[],
   phi:            0,
   theta:          0.28,
-  scale:          1,
+  scale:          0.82,   // ensures full sphere + atmosphere glow fits inside canvas
   opacity:        1,
   devicePixelRatio: 2,
 }
@@ -139,7 +139,7 @@ export function SignalGlobe({ className = '' }: { className?: string }) {
       const phi   = phiRef.current
       const theta = 0.28   // matches globeConfig.theta
 
-      const R   = Math.min(W, H) * 0.42
+      const R   = Math.min(W, H) * 0.42 * 0.82
       const cx  = W / 2
       const cy  = H / 2
       const FOV = Math.min(W, H) * 1.35

@@ -17,7 +17,7 @@ export interface Position {
 
 export function Globe({ globeConfig }: { globeConfig: GlobeConfig }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const widthRef  = useRef(0)
+  const initialSizeRef = useRef({ width: 0, height: 0, pixelRatio: 1 })
   const phiRef    = useRef(globeConfig.phi ?? 0)
 
   useEffect(() => {
@@ -25,15 +25,25 @@ export function Globe({ globeConfig }: { globeConfig: GlobeConfig }) {
     if (!canvas) return
 
     const onResize = () => {
-      if (canvas.parentElement) widthRef.current = canvas.parentElement.offsetWidth
+      const pixelRatio = window.devicePixelRatio || 1
+      initialSizeRef.current = {
+        // clientWidth/clientHeight are the CSS dimensions and are not
+        // affected by the wrapper's floating transform.
+        width: Math.max(1, canvas.clientWidth),
+        height: Math.max(1, canvas.clientHeight),
+        pixelRatio,
+      }
     }
     window.addEventListener('resize', onResize)
     onResize()
 
     const globe = createGlobe(canvas, {
-      devicePixelRatio: window.devicePixelRatio || 2,
-      width:  (widthRef.current || 600) * 2,
-      height: (widthRef.current || 600) * 2,
+      // COBE's shader dimensions must use the same pixel ratio as the
+      // backing canvas. Hardcoding 2 makes the sphere render in a corner on
+      // standard-DPI displays because Phenomenon creates a smaller canvas.
+      devicePixelRatio: initialSizeRef.current.pixelRatio,
+      width:  initialSizeRef.current.width * initialSizeRef.current.pixelRatio,
+      height: initialSizeRef.current.height * initialSizeRef.current.pixelRatio,
       phi:    globeConfig.phi    ?? 0,
       theta:  globeConfig.theta  ?? 0.3,
       dark:   globeConfig.dark   ?? 1,
@@ -50,8 +60,10 @@ export function Globe({ globeConfig }: { globeConfig: GlobeConfig }) {
       onRender(state) {
         phiRef.current += 0.0025
         state.phi    = phiRef.current
-        state.width  = widthRef.current * 2
-        state.height = widthRef.current * 2
+        // Read the actual backing dimensions so CSS resizes and fractional
+        // device pixel ratios stay aligned with the WebGL viewport.
+        state.width  = canvas.width
+        state.height = canvas.height
       },
     })
 

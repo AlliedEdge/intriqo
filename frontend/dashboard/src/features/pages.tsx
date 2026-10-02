@@ -16,6 +16,7 @@ import {
 } from '@/components/ui'
 import { LandingHero } from './landing/LandingHero'
 import { PacketToFindings } from './landing/PacketToFindings'
+import { GridPulse } from '@/components/GridPulse'
 import { SignalGlobe } from '@/components/SignalGlobe'
 
 const GITHUB_URL = 'https://github.com/AlliedEdge/intriqo'
@@ -87,20 +88,15 @@ export function LandingPage() {
         <PacketToFindings />
 
         <section id="product" className="public-section section-light-red">
+          <GridPulse className="slr-grid-pulse" />
           <div className="slr-bg-canvas" aria-hidden="true">
             <div className="slr-blob slr-blob-1" /><div className="slr-blob slr-blob-2" /><div className="slr-blob slr-blob-3" />
-            <div className="slr-neon-blob" />
-            <div className="slr-grid" />
             <div className="slr-ring slr-ring-1" /><div className="slr-ring slr-ring-2" />
-            <div className="slr-beam slr-beam-1" /><div className="slr-beam slr-beam-2" /><div className="slr-beam slr-beam-3" />
-            <div className="slr-scan" />
-            <div className="slr-dots"><span /><span /><span /><span /><span /><span /><span /><span /><span /><span /></div>
             <div className="slr-sparks"><span /><span /><span /><span /><span /><span /></div>
-            <div className="slr-corner slr-corner-tl" /><div className="slr-corner slr-corner-tr" /><div className="slr-corner slr-corner-bl" /><div className="slr-corner slr-corner-br" />
           </div>
           <div className="container slr-content">
-          <Reveal><div className="section-intro"><p className="eyebrow">PACKET TO FINDING</p><h2>A clear path from packet to finding.</h2><p>Each layer has a defined responsibility and a typed handoff, so detection, investigation, policy, and audit records remain connected.</p></div></Reveal>
-          <Reveal className="reveal-delay-1"><div className="capability-grid">
+          <Reveal><div className="section-intro" data-grid-avoid><p className="eyebrow">PACKET TO FINDING</p><h2>A clear path from packet to finding.</h2><p>Each layer has a defined responsibility and a typed handoff, so detection, investigation, policy, and audit records remain connected.</p></div></Reveal>
+          <Reveal className="reveal-delay-1"><div className="capability-grid" data-grid-avoid>
             <Capability icon="network" index="01" title="C++ detection" copy="IPv4 parsing, TCP/UDP/ICMP handling, flow tracking, and deterministic port-scan detection." />
             <Capability icon="layers" index="02" title="SecurityEvent" copy="A typed JSON handoff carries detected network signals from the IDS into the rest of the SOC." />
             <Capability icon="server" index="03" title="Control plane" copy="FastAPI services connect authenticated events, incidents, tasks, findings, and audit logs." />
@@ -118,20 +114,15 @@ export function LandingPage() {
         </section>
 
         <section id="get-intriqo" className="public-section download-section section-light-red">
+          <GridPulse className="slr-grid-pulse" />
           <div className="slr-bg-canvas" aria-hidden="true">
             <div className="slr-blob slr-blob-1" /><div className="slr-blob slr-blob-2" /><div className="slr-blob slr-blob-3" />
-            <div className="slr-neon-blob" />
-            <div className="slr-grid" />
             <div className="slr-ring slr-ring-1" /><div className="slr-ring slr-ring-2" />
-            <div className="slr-beam slr-beam-1" /><div className="slr-beam slr-beam-2" /><div className="slr-beam slr-beam-3" />
-            <div className="slr-scan" />
-            <div className="slr-dots"><span /><span /><span /><span /><span /><span /><span /><span /><span /><span /></div>
             <div className="slr-sparks"><span /><span /><span /><span /><span /><span /></div>
-            <div className="slr-corner slr-corner-tl" /><div className="slr-corner slr-corner-tr" /><div className="slr-corner slr-corner-bl" /><div className="slr-corner slr-corner-br" />
           </div>
           <div className="container slr-content">
-             <Reveal><div className="section-intro"><p className="eyebrow">GET STARTED</p><h2>Run the control plane where you work.</h2><p>Use the repository's source and Docker workflows to run the web application, backend, and supporting services locally.</p></div></Reveal>
-            <Reveal className="reveal-delay-1"><div className="download-grid">
+             <Reveal><div className="section-intro" data-grid-avoid><p className="eyebrow">GET STARTED</p><h2>Run the control plane where you work.</h2><p>Use the repository's source and Docker workflows to run the web application, backend, and supporting services locally.</p></div></Reveal>
+            <Reveal className="reveal-delay-1"><div className="download-grid" data-grid-avoid>
               <DownloadCard icon="code" label="SOURCE" title="Clone the repository" copy="Use the documented Python, C++, Node.js, and Docker prerequisites." command="git clone https://github.com/AlliedEdge/intriqo.git" href={`${GITHUB_URL}#quick-start`} />
               <DownloadCard icon="layers" label="CONTAINERIZED" title="Docker Compose" copy="Start PostgreSQL and the project services using the repository compose file." command="docker compose up -d" href={`${GITHUB_URL}#quick-start`} />
               <DownloadCard icon="terminal" label="LINUX" title="Linux development" copy="Build the engine, run the control plane, and start the Vite dashboard from source." command="cd frontend/dashboard && npm run dev" href={`${GITHUB_URL}#quick-start`} />

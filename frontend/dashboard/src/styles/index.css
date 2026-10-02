@@ -481,9 +481,9 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .public-footer { display: flex; align-items: center; gap: 18px; min-height: 78px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.67rem; }
 
-.final-cta-section { border-top: 1px solid var(--border); background: radial-gradient(ellipse 60% 70% at 78% 50%, rgba(0,180,255,0.10) 0%, transparent 65%), var(--bg-soft); position: relative; overflow: visible; padding: 28px 0 36px; }
+.final-cta-section { border-top: 1px solid var(--border); background: radial-gradient(ellipse 60% 70% at 78% 50%, rgba(0,180,255,0.10) 0%, transparent 65%), var(--bg-soft); position: relative; overflow: visible; padding: 48px 0 48px; min-height: 420px; }
 
-.final-cta-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr); align-items: center; gap: 32px; position: relative; z-index: 2; }
+.final-cta-layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; align-items: center; gap: 40px; position: relative; z-index: 2; min-height: 340px; }
 
 .final-cta-content { display: flex; flex-direction: column; align-items: flex-start; gap: 24px; }
 
@@ -1027,7 +1027,7 @@ select { padding-right: 28px; }
 }
 
 /* ==========================================================================
-   Section Light Red (SLR) — White sections with pelican-red animated BG
+   Section Light Red (SLR) — White sections with a spectrum grid pulse
    Used on: #product, #get-intriqo
    ========================================================================== */
 
@@ -1070,60 +1070,9 @@ select { padding-right: 28px; }
   100% { transform: translateY(-80px) scale(0.4); opacity: 0; }
 }
 
-@keyframes slr-grid-pan {
-  0%   { background-position: 0 0; }
-  100% { background-position: 40px 40px; }
-}
-
 @keyframes slr-reveal-line {
   from { width: 0; opacity: 0; }
   to   { width: 80px; opacity: 1; }
-}
-
-/* ---- Neon blue fluid water keyframes ---- */
-
-/* Morphing blob shapes — organic path animation */
-@keyframes slr-fluid-morph-1 {
-  0%   { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: translate(0,0) scale(1) rotate(0deg); }
-  20%  { border-radius: 40% 60% 55% 45% / 50% 60% 40% 50%; transform: translate(18px,-22px) scale(1.07) rotate(12deg); }
-  40%  { border-radius: 70% 30% 45% 55% / 40% 65% 35% 60%; transform: translate(-12px,14px) scale(0.96) rotate(25deg); }
-  60%  { border-radius: 30% 70% 60% 40% / 70% 35% 65% 30%; transform: translate(22px,8px) scale(1.10) rotate(15deg); }
-  80%  { border-radius: 55% 45% 35% 65% / 45% 55% 45% 55%; transform: translate(-8px,-18px) scale(0.98) rotate(-5deg); }
-  100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: translate(0,0) scale(1) rotate(0deg); }
-}
-
-@keyframes slr-fluid-morph-2 {
-  0%   { border-radius: 45% 55% 65% 35% / 55% 45% 55% 45%; transform: translate(0,0) scale(1) rotate(0deg); }
-  25%  { border-radius: 65% 35% 40% 60% / 35% 65% 40% 60%; transform: translate(-24px,16px) scale(1.08) rotate(-18deg); }
-  50%  { border-radius: 35% 65% 55% 45% / 60% 40% 65% 35%; transform: translate(14px,-26px) scale(0.94) rotate(-32deg); }
-  75%  { border-radius: 55% 45% 70% 30% / 45% 55% 30% 70%; transform: translate(-16px,10px) scale(1.05) rotate(-22deg); }
-  100% { border-radius: 45% 55% 65% 35% / 55% 45% 55% 45%; transform: translate(0,0) scale(1) rotate(0deg); }
-}
-
-@keyframes slr-fluid-morph-3 {
-  0%   { border-radius: 70% 30% 50% 50% / 30% 70% 50% 50%; transform: translate(0,0) scale(1) rotate(0deg); }
-  33%  { border-radius: 40% 60% 30% 70% / 65% 35% 55% 45%; transform: translate(20px,20px) scale(1.12) rotate(20deg); }
-  66%  { border-radius: 55% 45% 70% 30% / 40% 60% 35% 65%; transform: translate(-18px,-14px) scale(0.93) rotate(38deg); }
-  100% { border-radius: 70% 30% 50% 50% / 30% 70% 50% 50%; transform: translate(0,0) scale(1) rotate(0deg); }
-}
-
-@keyframes slr-fluid-morph-4 {
-  0%   { border-radius: 50% 50% 40% 60% / 40% 60% 55% 45%; transform: translate(0,0) scale(1) rotate(0deg); }
-  30%  { border-radius: 30% 70% 60% 40% / 55% 45% 40% 60%; transform: translate(28px,-12px) scale(1.06) rotate(-14deg); }
-  60%  { border-radius: 65% 35% 45% 55% / 35% 65% 60% 40%; transform: translate(-20px,22px) scale(0.97) rotate(-28deg); }
-  100% { border-radius: 50% 50% 40% 60% / 40% 60% 55% 45%; transform: translate(0,0) scale(1) rotate(0deg); }
-}
-
-/* Ripple rings expanding outward like water drops */
-@keyframes slr-ripple {
-  0%   { transform: translate(-50%,-50%) scale(0.2); opacity: 0.7; }
-  100% { transform: translate(-50%,-50%) scale(2.8); opacity: 0; }
-}
-
-/* Slow undulating opacity wave across the whole section */
-@keyframes slr-wave-opacity {
-  0%,100% { opacity: 0.55; }
-  50%      { opacity: 0.90; }
 }
 
 /* ---- Section base ---- */
@@ -1132,6 +1081,7 @@ select { padding-right: 28px; }
   position: relative;
   overflow: hidden;
   background: #ffffff;
+  color: #111827;
   border-top: 1px solid rgba(220, 38, 38, 0.18);
   border-bottom: 1px solid rgba(220, 38, 38, 0.18);
 }
@@ -1143,6 +1093,27 @@ select { padding-right: 28px; }
   pointer-events: none;
   overflow: hidden;
   z-index: 0;
+}
+
+/* Pointer-reactive spectrum grid. The canvas is intentionally behind the
+   content while the component reads text line boxes from the section to dim
+   cells underneath copy instead of drawing through it. */
+.grid-pulse {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  --grid-pulse-line: color-mix(in oklab, currentColor 7%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 92%, transparent);
+  mask-image: linear-gradient(to bottom, #000 92%, transparent);
+}
+
+.grid-pulse-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
 /* Soft radial blobs */
@@ -1169,18 +1140,6 @@ select { padding-right: 28px; }
   top: 40%; left: 38%;
   background: radial-gradient(circle, rgba(252,165,165,0.22) 0%, rgba(239,68,68,0.07) 55%, transparent 72%);
   animation: slr-blob-drift-3 22s ease-in-out infinite;
-}
-
-/* Subtle moving grid overlay */
-.slr-grid {
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(220,38,38,0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(220,38,38,0.055) 1px, transparent 1px);
-  background-size: 40px 40px;
-  animation: slr-grid-pan 8s linear infinite;
-  mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 100%);
 }
 
 /* Concentric spinning rings */
@@ -1278,220 +1237,12 @@ select { padding-right: 28px; }
 .section-light-red .inline-link       { color: #dc2626; }
 .section-light-red .inline-link:hover { color: #b91c1c; }
 
-/* ---- Fluid neon blue elements ---- */
-
-/* Four morphing liquid blobs at different positions */
-.slr-fluid {
-  position: absolute;
-  pointer-events: none;
-  filter: blur(55px);
-  opacity: 0;
-  transition: opacity 0.6s ease;
-}
-
-/* Reveal once the section is in view — toggled by .is-visible on Reveal wrapper */
-.section-light-red .slr-fluid {
-  opacity: 1;
-}
-
-.slr-fluid-1 {
-  width: 420px;
-  height: 380px;
-  top: -80px;
-  left: -60px;
-  background: radial-gradient(ellipse at 40% 50%, rgba(16,187,224,0.28) 0%, rgba(16,187,224,0.12) 45%, transparent 70%);
-  animation: slr-fluid-morph-1 18s ease-in-out infinite, slr-wave-opacity 9s ease-in-out infinite;
-}
-
-.slr-fluid-2 {
-  width: 360px;
-  height: 400px;
-  top: 30%;
-  right: 5%;
-  background: radial-gradient(ellipse at 55% 45%, rgba(16,187,224,0.22) 0%, rgba(0,200,255,0.09) 50%, transparent 72%);
-  animation: slr-fluid-morph-2 22s ease-in-out infinite, slr-wave-opacity 11s ease-in-out 2s infinite;
-}
-
-.slr-fluid-3 {
-  width: 300px;
-  height: 320px;
-  bottom: -60px;
-  left: 28%;
-  background: radial-gradient(ellipse at 45% 55%, rgba(0,200,255,0.20) 0%, rgba(16,187,224,0.07) 55%, transparent 75%);
-  animation: slr-fluid-morph-3 26s ease-in-out infinite, slr-wave-opacity 13s ease-in-out 4s infinite;
-}
-
-.slr-fluid-4 {
-  width: 280px;
-  height: 260px;
-  top: 15%;
-  left: 42%;
-  background: radial-gradient(ellipse at 50% 50%, rgba(16,187,224,0.16) 0%, rgba(16,187,224,0.05) 55%, transparent 72%);
-  animation: slr-fluid-morph-4 20s ease-in-out 3s infinite, slr-wave-opacity 8s ease-in-out 1s infinite;
-  filter: blur(70px);
-}
-
-/* Ripple rings — water drop circles */
-.slr-ripples {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.slr-ripple {
-  position: absolute;
-  border-radius: 50%;
-  border: 1.5px solid rgba(16,187,224,0.45);
-  box-shadow: 0 0 8px rgba(16,187,224,0.20), inset 0 0 8px rgba(16,187,224,0.08);
-  width: 60px;
-  height: 60px;
-  animation: slr-ripple 5s ease-out infinite;
-}
-
-.slr-ripple:nth-child(1) { top: 30%; left: 12%;  animation-delay: 0s;    animation-duration: 5.5s; }
-.slr-ripple:nth-child(2) { top: 60%; left: 65%;  animation-delay: 1.4s;  animation-duration: 6.2s; }
-.slr-ripple:nth-child(3) { top: 20%; left: 78%;  animation-delay: 2.8s;  animation-duration: 5.0s; }
-.slr-ripple:nth-child(4) { top: 72%; left: 38%;  animation-delay: 0.7s;  animation-duration: 7.0s; }
-.slr-ripple:nth-child(5) { top: 44%; left: 88%;  animation-delay: 3.5s;  animation-duration: 5.8s; }
-
-/* ---- Neon blue keyframes ---- */
-
-@keyframes slr-beam-sweep {
-  0%   { transform: translateX(-110%) skewX(-10deg); opacity: 0; }
-  6%   { opacity: 1; }
-  94%  { opacity: 1; }
-  100% { transform: translateX(210%) skewX(-10deg); opacity: 0; }
-}
-@keyframes slr-beam-sweep-rev {
-  0%   { transform: translateX(210%) skewX(10deg); opacity: 0; }
-  6%   { opacity: 1; }
-  94%  { opacity: 1; }
-  100% { transform: translateX(-110%) skewX(10deg); opacity: 0; }
-}
-@keyframes slr-scan-line {
-  0%   { top: -4px; opacity: 0; }
-  5%   { opacity: 1; }
-  95%  { opacity: 1; }
-  100% { top: calc(100% + 4px); opacity: 0; }
-}
-@keyframes slr-dot-blink {
-  0%, 100% { opacity: 0.12; transform: scale(0.7); }
-  50%       { opacity: 0.85; transform: scale(1.4); box-shadow: 0 0 14px 4px rgba(16,187,224,0.60); }
-}
-@keyframes slr-corner-grow {
-  from { width: 0; height: 0; opacity: 0; }
-  to   { width: 28px; height: 28px; opacity: 1; }
-}
-@keyframes slr-neon-drift {
-  0%   { transform: translate(0,0) scale(1);         opacity: 0.20; }
-  35%  { transform: translate(-35px,25px) scale(1.10); opacity: 0.30; }
-  70%  { transform: translate(20px,-30px) scale(0.92); opacity: 0.15; }
-  100% { transform: translate(0,0) scale(1);         opacity: 0.20; }
-}
-
-/* ---- Neon blue elements ---- */
-
-/* Large soft cyan blob — top-left, drifts slowly */
-.slr-neon-blob {
-  position: absolute;
-  width: 560px; height: 560px;
-  top: -140px; left: -80px;
-  border-radius: 50%;
-  filter: blur(90px);
-  pointer-events: none;
-  background: radial-gradient(circle, rgba(16,187,224,0.22) 0%, rgba(16,187,224,0.07) 50%, transparent 72%);
-  animation: slr-neon-drift 16s ease-in-out infinite;
-}
-
-/* Sweeping horizontal light beams */
-.slr-beam {
-  position: absolute;
-  left: 0; width: 100%;
-  pointer-events: none;
-  border-radius: 1px;
-}
-.slr-beam-1 {
-  top: 24%; height: 2px;
-  background: linear-gradient(90deg, transparent 0%, rgba(16,187,224,0.0) 8%, rgba(16,187,224,0.30) 42%, rgba(16,187,224,0.60) 50%, rgba(16,187,224,0.30) 58%, rgba(16,187,224,0.0) 78%, transparent 100%);
-  box-shadow: 0 0 10px 2px rgba(16,187,224,0.30);
-  animation: slr-beam-sweep 9s cubic-bezier(0.4,0,0.6,1) 0s infinite;
-}
-.slr-beam-2 {
-  top: 66%; height: 1.5px;
-  background: linear-gradient(90deg, transparent 0%, rgba(16,187,224,0.0) 5%, rgba(16,187,224,0.22) 40%, rgba(16,187,224,0.50) 50%, rgba(16,187,224,0.22) 60%, rgba(16,187,224,0.0) 82%, transparent 100%);
-  box-shadow: 0 0 7px 1px rgba(16,187,224,0.22);
-  animation: slr-beam-sweep-rev 13s cubic-bezier(0.4,0,0.6,1) 2.5s infinite;
-}
-.slr-beam-3 {
-  top: 46%; height: 1px; opacity: 0.5;
-  background: linear-gradient(90deg, transparent 0%, rgba(16,187,224,0.0) 20%, rgba(16,187,224,0.40) 48%, rgba(16,187,224,0.0) 66%, transparent 100%);
-  animation: slr-beam-sweep 17s cubic-bezier(0.4,0,0.6,1) 5s infinite;
-}
-
-/* Vertical scanning line */
-.slr-scan {
-  position: absolute;
-  left: 22%; width: 1px; height: 100%; top: 0;
-  pointer-events: none;
-  background: linear-gradient(180deg, transparent 0%, rgba(16,187,224,0.0) 8%, rgba(16,187,224,0.55) 45%, rgba(16,187,224,0.85) 50%, rgba(16,187,224,0.55) 55%, rgba(16,187,224,0.0) 88%, transparent 100%);
-  box-shadow: 0 0 8px 2px rgba(16,187,224,0.30);
-  animation: slr-scan-line 7s ease-in-out 1s infinite;
-}
-
-/* Grid of tiny blinking neon dots */
-.slr-dots { position: absolute; inset: 0; pointer-events: none; }
-.slr-dots span {
-  position: absolute; display: block;
-  width: 5px; height: 5px; border-radius: 50%;
-  background: rgba(16,187,224,0.75);
-  box-shadow: 0 0 7px 2px rgba(16,187,224,0.40);
-  animation: slr-dot-blink 3s ease-in-out infinite;
-}
-.slr-dots span:nth-child(1)  { top: 12%; left:  8%; animation-delay: 0s;   animation-duration: 2.8s; }
-.slr-dots span:nth-child(2)  { top: 18%; left: 35%; animation-delay: 0.7s; animation-duration: 3.4s; }
-.slr-dots span:nth-child(3)  { top:  8%; left: 62%; animation-delay: 1.4s; animation-duration: 2.5s; }
-.slr-dots span:nth-child(4)  { top: 30%; left: 85%; animation-delay: 0.3s; animation-duration: 3.8s; }
-.slr-dots span:nth-child(5)  { top: 55%; left: 18%; animation-delay: 2.1s; animation-duration: 3.1s; }
-.slr-dots span:nth-child(6)  { top: 72%; left: 48%; animation-delay: 1.8s; animation-duration: 2.9s; }
-.slr-dots span:nth-child(7)  { top: 82%; left: 78%; animation-delay: 0.9s; animation-duration: 4.2s; }
-.slr-dots span:nth-child(8)  { top: 45%; left: 92%; animation-delay: 3.2s; animation-duration: 3.6s; }
-.slr-dots span:nth-child(9)  { top: 90%; left: 12%; animation-delay: 1.1s; animation-duration: 2.7s; }
-.slr-dots span:nth-child(10) { top: 65%; left: 65%; animation-delay: 2.6s; animation-duration: 3.3s; }
-
-/* HUD-style neon corner brackets */
-.slr-corner {
-  position: absolute;
-  width: 28px; height: 28px;
-  pointer-events: none;
-  opacity: 0;
-  animation: slr-corner-grow 0.6s cubic-bezier(0.22,1,0.36,1) forwards;
-}
-.slr-corner::before, .slr-corner::after {
-  content: '';
-  position: absolute;
-  background: rgba(16,187,224,0.75);
-  box-shadow: 0 0 8px rgba(16,187,224,0.60);
-  border-radius: 1px;
-}
-.slr-corner::before { top: 0; left: 0; width: 100%; height: 2px; }
-.slr-corner::after  { top: 0; left: 0; width: 2px;  height: 100%; }
-
-.slr-corner-tl { top: 14px;    left: 14px;  animation-delay: 0.1s;  }
-.slr-corner-tr { top: 14px;    right: 14px; animation-delay: 0.25s; transform: scaleX(-1); }
-.slr-corner-bl { bottom: 14px; left: 14px;  animation-delay: 0.4s;  transform: scaleY(-1); }
-.slr-corner-br { bottom: 14px; right: 14px; animation-delay: 0.55s; transform: scale(-1,-1); }
-
 /* ---- Reduce motion support ---- */
 
 @media (prefers-reduced-motion: reduce) {
   .slr-blob-1, .slr-blob-2, .slr-blob-3,
   .slr-ring-1, .slr-ring-2,
   .slr-sparks span,
-  .slr-grid,
-  .slr-neon-blob,
-  .slr-beam, .slr-scan,
-  .slr-dots span,
-  .slr-corner,
   .section-light-red .eyebrow::after {
     animation: none !important;
   }
@@ -1517,16 +1268,15 @@ select { padding-right: 28px; }
 /* Globe wrapper */
 .final-cta-globe-wrap {
   position: relative;
-  width: 100%;
-  max-width: 520px;
-  aspect-ratio: 1 / 1;
-  margin: -80px auto -40px;
+  width: 340px;
+  height: 340px;
+  flex-shrink: 0;
   z-index: 3;
   animation: globe-float 8s ease-in-out infinite;
   filter:
-    drop-shadow(0 0   50px rgba(0, 200, 255, 0.60))
-    drop-shadow(0 24px 52px rgba(0, 180, 255, 0.40))
-    drop-shadow(0 48px 90px rgba(0, 160, 240, 0.22));
+    drop-shadow(0 0   40px rgba(0, 200, 255, 0.55))
+    drop-shadow(0 16px 40px rgba(0, 180, 255, 0.35))
+    drop-shadow(0 32px 70px rgba(0, 160, 240, 0.18));
 }
 
 /* Inner motion div and canvas both fill the wrapper */
@@ -1575,5 +1325,5 @@ select { padding-right: 28px; }
   }
   .final-cta-content { align-items: center; }
   .final-cta-actions { justify-content: center; }
-  .final-cta-globe-wrap { max-width: 320px; margin: -30px auto -20px; }
+  .final-cta-globe-wrap { width: 260px; height: 260px; margin: 0 auto; }
 }
