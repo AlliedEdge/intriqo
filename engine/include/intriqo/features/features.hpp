@@ -25,6 +25,8 @@ struct FlowFeatures {
     std::uint32_t fin_count{0};
     std::uint32_t rst_count{0};
 
+    std::uint32_t connection_attempts{0};
+
     /// Extract features from an aggregated NetworkFlow.
     [[nodiscard]] static FlowFeatures from_flow(const flow::NetworkFlow& f) noexcept;
 };

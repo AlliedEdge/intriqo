@@ -4,6 +4,7 @@
 #include <string>
 #include <unordered_map>
 #include <variant>
+#include <cstdint>
 
 namespace intriqo::events {
 
@@ -49,5 +50,14 @@ struct SecurityEvent {
     /// Serialise to the cross-boundary JSON contract.
     [[nodiscard]] std::string to_json() const;
 };
+
+[[nodiscard]] SecurityEvent make_port_scan_event(const IPv4Address& source,
+                                                  const IPv4Address& destination,
+                                                  Severity severity,
+                                                  std::uint64_t unique_ports,
+                                                  std::uint64_t attempts,
+                                                  double window_seconds,
+                                                  std::uint16_t threshold,
+                                                  TimePoint timestamp);
 
 } // namespace intriqo::events

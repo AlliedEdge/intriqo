@@ -22,4 +22,10 @@ public:
     parse(packet::PacketView raw) const noexcept = 0;
 };
 
+class IPv4Parser final : public ProtocolParser {
+public:
+    [[nodiscard]] std::optional<packet::ParsedPacket>
+    parse(packet::PacketView raw) const noexcept override;
+};
+
 } // namespace intriqo::protocol

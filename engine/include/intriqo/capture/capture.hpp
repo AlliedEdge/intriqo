@@ -47,4 +47,17 @@ struct PcapReplayConfig {
     bool        realtime{false};    ///< Honour inter-packet timestamps
 };
 
+class PcapReplaySource final : public CaptureSource {
+public:
+    explicit PcapReplaySource(PcapReplayConfig config);
+    void set_callback(PacketCallback cb) override;
+    void start() override;
+    void stop() noexcept override;
+    [[nodiscard]] std::string description() const override;
+private:
+    PcapReplayConfig config_;
+    PacketCallback callback_;
+    bool stopped_{false};
+};
+
 } // namespace intriqo::capture

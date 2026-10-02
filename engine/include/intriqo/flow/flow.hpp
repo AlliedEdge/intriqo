@@ -1,7 +1,10 @@
 #pragma once
 
 #include "intriqo/common/types.hpp"
+#include "intriqo/packet/packet.hpp"
 #include <optional>
+#include <unordered_map>
+#include <vector>
 
 namespace intriqo::flow {
 
@@ -29,6 +32,9 @@ struct NetworkFlow {
     std::uint64_t rev_packet_count{0};
     ByteCount     fwd_byte_count{0};
     ByteCount     rev_byte_count{0};
+    std::uint32_t syn_count{0};
+    std::uint32_t fin_count{0};
+    std::uint32_t rst_count{0};
 
     /// Duration of the flow in seconds.
     [[nodiscard]] double duration_seconds() const noexcept;
@@ -45,6 +51,29 @@ enum class FlowState {
     ACTIVE,
     EXPIRED,   ///< Idle timeout exceeded
     FINISHED,  ///< FIN/RST observed (TCP)
+};
+
+struct FlowUpdate {
+    NetworkFlow flow;
+    bool created{false};
+};
+
+class FlowTable {
+public:
+    explicit FlowTable(Duration idle_timeout = Duration{60.0});
+
+    [[nodiscard]] FlowUpdate update(const packet::ParsedPacket& packet);
+    [[nodiscard]] std::vector<NetworkFlow> expire(TimePoint now);
+    [[nodiscard]] std::vector<NetworkFlow> flush();
+    [[nodiscard]] std::size_t size() const noexcept { return flows_.size(); }
+
+private:
+    struct KeyHash {
+        std::size_t operator()(const FlowKey& key) const noexcept;
+    };
+    std::unordered_map<FlowKey, NetworkFlow, KeyHash> flows_;
+    Duration idle_timeout_;
+    FlowId next_id_{1};
 };
 
 } // namespace intriqo::flow

@@ -5,6 +5,7 @@
 #include <string_view>
 #include <chrono>
 #include <array>
+#include <cstddef>
 
 namespace intriqo {
 
@@ -36,5 +37,7 @@ enum class Protocol : std::uint8_t {
 };
 
 [[nodiscard]] std::string_view protocol_name(Protocol p) noexcept;
+
+[[nodiscard]] bool operator<(const IPv4Address& lhs, const IPv4Address& rhs) noexcept;
 
 } // namespace intriqo
