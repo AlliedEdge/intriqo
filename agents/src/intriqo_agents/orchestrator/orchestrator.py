@@ -19,6 +19,7 @@ from intriqo_agents.contracts.security_event import SecurityEvent
 from intriqo_agents.state.task import AgentTask
 from intriqo_agents.state.result import AgentResult
 from intriqo_agents.orchestrator.registry import AgentRegistry
+from intriqo_agents.control_plane.client import ControlPlaneClient
 
 
 logger = logging.getLogger("intriqo.agents.orchestrator")
@@ -27,10 +28,21 @@ logger = logging.getLogger("intriqo.agents.orchestrator")
 class AgentOrchestrator:
     """Coordinates event routing, task generation, agent dispatch, and result aggregation."""
 
-    def __init__(self, registry: AgentRegistry) -> None:
+    def __init__(self, registry: AgentRegistry, client: ControlPlaneClient | None = None) -> None:
         if not isinstance(registry, AgentRegistry):
             raise TypeError(f"Expected AgentRegistry instance, got {type(registry).__name__}")
         self.registry = registry
+        self.client = client
+
+    def execute_task(self, task_id: str) -> AgentResult:
+        """Dispatch one persisted Control Plane task to the registered agent."""
+        task_payload = self.client.get_task(task_id) if self.client else None
+        if task_payload is not None and task_payload.get("task_type") != "INVESTIGATION":
+            return AgentResult.failure(task_id, "orchestrator", "Unsupported task type", {"task_type": task_payload.get("task_type")})
+        agent = self.registry.find_agent_by_capability("investigation")
+        if agent is None or not hasattr(agent, "execute_task"):
+            return AgentResult.failure(task_id, "orchestrator", "No remote investigation agent available")
+        return agent.execute_task(task_id, self.client)  # type: ignore[attr-defined]
 
     def create_task(self, event: SecurityEvent, task_id: Optional[str] = None) -> AgentTask:
         """Derive an AgentTask from a SecurityEvent."""
