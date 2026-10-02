@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-include(${CMAKE_SOURCE_DIR}/engine/cmake/IntriqoHelpers.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/IntriqoHelpers.cmake)
 
 # =============================================================================
 # Fetch GoogleTest (header-only, no install required)

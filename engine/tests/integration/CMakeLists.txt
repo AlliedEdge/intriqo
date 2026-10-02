@@ -9,3 +9,7 @@ cmake_minimum_required(VERSION 3.24)
 # gtest_discover_tests(test_pipeline_integration)
 
 message(STATUS "Engine integration tests: placeholder (no tests yet)")
+add_executable(test_pipeline test_pipeline.cpp)
+target_link_libraries(test_pipeline PRIVATE intriqo_engine_lib GTest::gtest_main)
+target_include_directories(test_pipeline PRIVATE ${PROJECT_SOURCE_DIR}/include)
+gtest_discover_tests(test_pipeline)
