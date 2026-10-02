@@ -94,6 +94,27 @@ export interface CurrentUser {
   role: string
 }
 
+export interface RegisterRequest {
+  username?: string
+  email: string
+  password: string
+  full_name?: string
+}
+
+export interface RegisteredUser {
+  id: string
+  username: string
+  email: string
+  full_name: string | null
+  role: string
+  is_active: boolean
+  is_email_verified: boolean
+}
+
+export interface MessageResponse {
+  message: string
+}
+
 export interface TokenResponse {
   access_token: string
   token_type: string
