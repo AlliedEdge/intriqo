@@ -37,6 +37,45 @@ class InvalidStatusTransitionError(ValueError):
     pass
 
 
+async def update_task_status(
+    db: AsyncSession, task_id: str, new_status: str, actor: str = "system"
+) -> AgentTask:
+    """Apply the small, explicit task state machine used by agent runners."""
+    if new_status not in VALID_STATUSES:
+        raise InvalidStatusTransitionError(f"Invalid task status '{new_status}'")
+    repo = AgentTaskRepository(db)
+    task = await repo.get_by_id(task_id)
+    if task is None:
+        raise AgentTaskNotFoundError(task_id)
+    if task.status == new_status:
+        return task
+    old_status = task.status
+    allowed = {
+        "PENDING": {"IN_PROGRESS", "FAILED"},
+        "IN_PROGRESS": {"COMPLETED", "FAILED"},
+    }
+    if new_status not in allowed.get(task.status, set()):
+        raise InvalidStatusTransitionError(
+            f"Cannot transition task '{task_id}' from {task.status} to {new_status}"
+        )
+    now = datetime.now(timezone.utc)
+    task.status = new_status
+    task.updated_at = now
+    if new_status in {"COMPLETED", "FAILED"}:
+        task.completed_at = now
+    await repo.update(task)
+    action = {
+        "IN_PROGRESS": audit_service.ACTION_TASK_STARTED,
+        "COMPLETED": audit_service.ACTION_TASK_COMPLETED,
+        "FAILED": audit_service.ACTION_TASK_FAILED,
+    }.get(new_status, audit_service.ACTION_TASK_STATUS_UPDATED)
+    await audit_service.record(
+        db, actor=actor, action=action, resource_type="agent_task", resource_id=task_id,
+        extra={"from_status": old_status, "status": new_status},
+    )
+    return task
+
+
 async def create_task(
     db: AsyncSession,
     payload: AgentTaskCreate,
@@ -96,6 +135,11 @@ async def submit_finding(
         raise AgentTaskNotFoundError(payload.task_id)
 
     finding_repo = FindingRepository(db)
+    existing, _ = await finding_repo.list(task_id=payload.task_id, agent_name=payload.agent_name)
+    if existing:
+        # A task has one result per agent.  Returning it makes retries safe and
+        # avoids duplicate findings without requiring a distributed idempotency store.
+        return existing[0]
     now = datetime.now(timezone.utc)
 
     finding = Finding(
@@ -119,6 +163,14 @@ async def submit_finding(
         task.completed_at = now
         task.updated_at = now
         await task_repo.update(task)
+        await audit_service.record(
+            db,
+            actor=actor,
+            action=audit_service.ACTION_TASK_COMPLETED,
+            resource_type="agent_task",
+            resource_id=task.task_id,
+            extra={"status": "COMPLETED", "via": "finding_submission"},
+        )
 
     await audit_service.record(
         db,

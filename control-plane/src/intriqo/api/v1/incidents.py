@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from intriqo.auth.dependencies import AnalystUser
+from intriqo.auth.dependencies import AgentUser, AnalystUser
 from intriqo.db.session import get_db
 from intriqo.repositories.incidents import IncidentRepository
 from intriqo.schemas.common import PaginatedResponse
@@ -74,7 +74,7 @@ async def list_incidents(
 @router.get("/{incident_id}", response_model=IncidentResponse)
 async def get_incident(
     incident_id: str,
-    user: AnalystUser,
+    user: AgentUser,
     db: AsyncSession = Depends(get_db),
 ) -> IncidentResponse:
     repo = IncidentRepository(db)
