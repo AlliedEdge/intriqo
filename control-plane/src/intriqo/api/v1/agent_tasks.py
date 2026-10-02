@@ -10,12 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from intriqo.auth.dependencies import AgentUser, AnalystUser
 from intriqo.db.session import get_db
 from intriqo.repositories.agent_tasks import AgentTaskRepository
-from intriqo.schemas.agent_tasks import AgentTaskCreate, AgentTaskResponse
+from intriqo.schemas.agent_tasks import AgentTaskCreate, AgentTaskResponse, AgentTaskStatusUpdate
 from intriqo.schemas.common import PaginatedResponse
 from intriqo.services.agent_task_service import (
     AgentTaskNotFoundError,
     InvalidTaskTypeError,
     create_task,
+    update_task_status,
+    InvalidStatusTransitionError,
 )
 
 router = APIRouter(prefix="/agent-tasks")
@@ -97,4 +99,20 @@ async def get_task(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": {"code": "TASK_NOT_FOUND", "message": f"AgentTask '{task_id}' was not found"}},
         )
+    return _to_response(task)
+
+
+@router.patch("/{task_id}", response_model=AgentTaskResponse)
+async def update_status(
+    task_id: str,
+    payload: AgentTaskStatusUpdate,
+    user: AgentUser,
+    db: AsyncSession = Depends(get_db),
+) -> AgentTaskResponse:
+    try:
+        task = await update_task_status(db, task_id, payload.status, actor=user.username)
+    except AgentTaskNotFoundError as e:
+        raise HTTPException(status_code=404, detail={"error": {"code": "TASK_NOT_FOUND", "message": str(e)}})
+    except InvalidStatusTransitionError as e:
+        raise HTTPException(status_code=409, detail={"error": {"code": "INVALID_STATUS_TRANSITION", "message": str(e)}})
     return _to_response(task)
