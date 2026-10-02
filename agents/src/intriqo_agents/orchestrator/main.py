@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import argparse
 
 from intriqo_agents.investigation.agent import InvestigationAgent
 from intriqo_agents.orchestrator.registry import AgentRegistry
 from intriqo_agents.orchestrator.orchestrator import AgentOrchestrator
 from intriqo_agents.contracts.security_event import SecurityEvent
+from intriqo_agents.control_plane.client import ControlPlaneClient
 from datetime import datetime, timezone
 
 
@@ -61,5 +63,18 @@ def run_demo() -> int:
     return 1
 
 
+def run_task(task_id: str) -> int:
+    """Execute one persisted task; credentials are read from the environment."""
+    setup_logging()
+    with ControlPlaneClient() as client:
+        registry = AgentRegistry([InvestigationAgent()])
+        result = AgentOrchestrator(registry, client).execute_task(task_id)
+    print(json.dumps(result.to_dict(), indent=2))
+    return 0 if result.status in {"SUCCESS", "INCONCLUSIVE"} else 1
+
+
 if __name__ == "__main__":
-    sys.exit(run_demo())
+    parser = argparse.ArgumentParser(description="Run the Intriqo deterministic investigation agent")
+    parser.add_argument("--task-id", help="Persisted Control Plane AgentTask to execute")
+    args = parser.parse_args()
+    sys.exit(run_task(args.task_id) if args.task_id else run_demo())
