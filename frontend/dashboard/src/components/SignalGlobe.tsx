@@ -1,518 +1,204 @@
 import { useEffect, useRef } from 'react'
+import { World } from './globe'
 
 /* -------------------------------------------------------------------------
-   SignalGlobe — Cybernetic 3-D digital signal sphere with electric blue
-   and cyan glowing aesthetic, glowing telemetry nodes (shiny dots),
-   dynamic data arcs, radar scan rings, and orbital telemetry rings.
-   Pure Canvas — zero dependencies.
+   SignalGlobe — cobe globe (deep-space render) + canvas arc/node overlay.
+   The beautiful Aceternity-style globe from cobe handles the sphere, land
+   masses and glow. A 2D canvas overlay draws the animated signal arcs and
+   pulsing city nodes on top, perfectly synced to the same rotation.
    ------------------------------------------------------------------------- */
 
-interface Vec3 { x: number; y: number; z: number }
-
-function rotY(v: Vec3, a: number): Vec3 {
-  const c = Math.cos(a), s = Math.sin(a)
-  return { x: v.x * c + v.z * s, y: v.y, z: -v.x * s + v.z * c }
+const globeConfig = {
+  dark:           1,
+  diffuse:        0.35,
+  mapSamples:     16000,
+  mapBrightness:  1.8,
+  baseColor:      [0.02, 0.08, 0.20] as [number,number,number],
+  markerColor:    [0.10, 0.72, 1.00] as [number,number,number],
+  glowColor:      [0.10, 0.72, 1.00] as [number,number,number],
+  markers:        [] as { location: [number,number]; size: number }[],
+  phi:            0,
+  theta:          0.28,
+  scale:          1,
+  opacity:        1,
+  devicePixelRatio: 2,
 }
 
-function rotX(v: Vec3, a: number): Vec3 {
-  const c = Math.cos(a), s = Math.sin(a)
-  return { x: v.x, y: v.y * c - v.z * s, z: v.y * s + v.z * c }
-}
+/* ---- Arc data (exact from user's snippet) ---- */
+const COLORS = ['#06b6d4', '#3b82f6', '#6366f1']
+const c = (i: number) => COLORS[i % COLORS.length]
 
-function project(v: Vec3, cx: number, cy: number, fov: number): [number, number, number] {
-  const z = v.z + fov
-  const s = fov / z
-  return [cx + v.x * s, cy + v.y * s, s]
-}
+const ARCS = [
+  { startLat:-19.885592, startLng:-43.951191, endLat:-22.9068,   endLng:-43.1729,    arcAlt:0.1, color:c(0) },
+  { startLat: 28.6139,   startLng: 77.209,    endLat:  3.139,    endLng:101.6869,    arcAlt:0.2, color:c(1) },
+  { startLat:-19.885592, startLng:-43.951191, endLat: -1.303396, endLng: 36.852443,  arcAlt:0.5, color:c(0) },
+  { startLat:  1.3521,   startLng:103.8198,   endLat: 35.6762,   endLng:139.6503,    arcAlt:0.2, color:c(1) },
+  { startLat: 51.5072,   startLng: -0.1276,   endLat:  3.139,    endLng:101.6869,    arcAlt:0.3, color:c(0) },
+  { startLat:-15.785493, startLng:-47.909029, endLat: 36.162809, endLng:-115.119411, arcAlt:0.3, color:c(2) },
+  { startLat:-33.8688,   startLng:151.2093,   endLat: 22.3193,   endLng:114.1694,    arcAlt:0.3, color:c(0) },
+  { startLat: 21.3099,   startLng:-157.8581,  endLat: 40.7128,   endLng:-74.006,     arcAlt:0.3, color:c(1) },
+  { startLat: -6.2088,   startLng:106.8456,   endLat: 51.5072,   endLng: -0.1276,    arcAlt:0.3, color:c(2) },
+  { startLat: 11.986597, startLng:  8.571831, endLat:-15.595412, endLng:-56.05918,   arcAlt:0.5, color:c(0) },
+  { startLat:-34.6037,   startLng:-58.3816,   endLat: 22.3193,   endLng:114.1694,    arcAlt:0.7, color:c(1) },
+  { startLat: 51.5072,   startLng: -0.1276,   endLat: 48.8566,   endLng: -2.3522,    arcAlt:0.1, color:c(0) },
+  { startLat: 14.5995,   startLng:120.9842,   endLat: 51.5072,   endLng: -0.1276,    arcAlt:0.3, color:c(2) },
+  { startLat:  1.3521,   startLng:103.8198,   endLat:-33.8688,   endLng:151.2093,    arcAlt:0.2, color:c(0) },
+  { startLat: 34.0522,   startLng:-118.2437,  endLat: 48.8566,   endLng: -2.3522,    arcAlt:0.2, color:c(1) },
+  { startLat:-15.432563, startLng: 28.315853, endLat:  1.094136, endLng:-63.34546,   arcAlt:0.7, color:c(0) },
+  { startLat: 37.5665,   startLng:126.978,    endLat: 35.6762,   endLng:139.6503,    arcAlt:0.1, color:c(2) },
+  { startLat: 22.3193,   startLng:114.1694,   endLat: 51.5072,   endLng: -0.1276,    arcAlt:0.3, color:c(1) },
+  { startLat: 48.8566,   startLng: -2.3522,   endLat: 52.52,     endLng: 13.405,     arcAlt:0.1, color:c(1) },
+  { startLat: 52.52,     startLng: 13.405,    endLat: 34.0522,   endLng:-118.2437,   arcAlt:0.2, color:c(2) },
+  { startLat:  1.3521,   startLng:103.8198,   endLat: 40.7128,   endLng:-74.006,     arcAlt:0.5, color:c(2) },
+  { startLat: 51.5072,   startLng: -0.1276,   endLat: 34.0522,   endLng:-118.2437,   arcAlt:0.2, color:c(0) },
+  { startLat: 22.3193,   startLng:114.1694,   endLat:-22.9068,   endLng:-43.1729,    arcAlt:0.7, color:c(1) },
+  { startLat:  1.3521,   startLng:103.8198,   endLat:-34.6037,   endLng:-58.3816,    arcAlt:0.5, color:c(0) },
+  { startLat:-22.9068,   startLng:-43.1729,   endLat: 28.6139,   endLng: 77.209,     arcAlt:0.7, color:c(2) },
+  { startLat: 41.9028,   startLng: 12.4964,   endLat: 34.0522,   endLng:-118.2437,   arcAlt:0.2, color:c(2) },
+  { startLat: 22.3193,   startLng:114.1694,   endLat:  1.3521,   endLng:103.8198,    arcAlt:0.2, color:c(1) },
+  { startLat: 35.6762,   startLng:139.6503,   endLat: 22.3193,   endLng:114.1694,    arcAlt:0.2, color:c(2) },
+  { startLat: 52.52,     startLng: 13.405,    endLat: 22.3193,   endLng:114.1694,    arcAlt:0.3, color:c(0) },
+  { startLat:-33.936138, startLng: 18.436529, endLat: 21.395643, endLng: 39.883798,  arcAlt:0.3, color:c(0) },
+]
 
-// lat/lon degrees → unit sphere * r
-function ll(lat: number, lon: number, r: number): Vec3 {
+/* ---- 3D helpers (match cobe's coordinate system) ---- */
+interface V3 { x:number; y:number; z:number }
+
+function ll2v(lat:number, lon:number, r:number): V3 {
   const φ = (lat * Math.PI) / 180
   const λ = (lon * Math.PI) / 180
-  return { x: r * Math.cos(φ) * Math.cos(λ), y: -r * Math.sin(φ), z: r * Math.cos(φ) * Math.sin(λ) }
+  return { x: r*Math.cos(φ)*Math.cos(λ), y: -r*Math.sin(φ), z: r*Math.cos(φ)*Math.sin(λ) }
 }
-
-// Great-circle slerp
-function slerp(a: Vec3, b: Vec3, t: number, r: number): Vec3 {
-  const dot = Math.min(1, Math.max(-1, (a.x*b.x + a.y*b.y + a.z*b.z) / (r * r)))
+function rotY(v:V3, a:number): V3 {
+  const c=Math.cos(a), s=Math.sin(a)
+  return { x:v.x*c+v.z*s, y:v.y, z:-v.x*s+v.z*c }
+}
+function rotX(v:V3, a:number): V3 {
+  const c=Math.cos(a), s=Math.sin(a)
+  return { x:v.x, y:v.y*c-v.z*s, z:v.y*s+v.z*c }
+}
+function proj(v:V3, cx:number, cy:number, fov:number): [number,number] {
+  const s = fov / (v.z + fov)
+  return [cx + v.x*s, cy + v.y*s]
+}
+function slerp(a:V3, b:V3, t:number, r:number): V3 {
+  const dot = Math.min(1, Math.max(-1, (a.x*b.x+a.y*b.y+a.z*b.z)/(r*r)))
   const ω = Math.acos(dot)
-  if (Math.abs(ω) < 1e-6) return a
+  if (Math.abs(ω)<1e-6) return a
   const s = Math.sin(ω)
-  const s0 = Math.sin((1 - t) * ω) / s
-  const s1 = Math.sin(t * ω) / s
-  return { x: a.x*s0 + b.x*s1, y: a.y*s0 + b.y*s1, z: a.z*s0 + b.z*s1 }
+  const s0 = Math.sin((1-t)*ω)/s, s1 = Math.sin(t*ω)/s
+  return { x:a.x*s0+b.x*s1, y:a.y*s0+b.y*s1, z:a.z*s0+b.z*s1 }
 }
-
-// Global detection and telemetry sensor nodes [lat, lon]
-const NODES: [number, number][] = [
-  [40.7, -74.0],    // New York
-  [51.5, -0.1],     // London
-  [35.7, 139.7],    // Tokyo
-  [-33.9, 151.2],   // Sydney
-  [1.3, 103.8],     // Singapore
-  [55.7, 37.6],     // Moscow
-  [19.1, 72.9],     // Mumbai
-  [25.2, 55.3],     // Dubai
-  [37.8, -122.4],   // San Francisco
-  [-23.5, -46.6],   // São Paulo
-  [48.8, 2.3],      // Paris
-  [52.5, 13.4],     // Berlin
-  [22.3, 114.2],    // Hong Kong
-  [31.2, 121.5],    // Shanghai
-  [37.5, 127.0],    // Seoul
-  [-37.8, 144.9],   // Melbourne
-  [43.6, -79.4],    // Toronto
-  [47.6, -122.3],   // Seattle
-  [34.0, -118.2],   // Los Angeles
-  [-34.6, -58.4],   // Buenos Aires
-  [59.3, 18.1],     // Stockholm
-  [28.6, 77.2],     // New Delhi
-  [13.7, 100.5],    // Bangkok
-  [-1.3, 36.8],     // Nairobi
-  [-33.9, 18.4],    // Cape Town
-  [64.1, -21.9],    // Reykjavik
-  [32.0, 34.8],     // Tel Aviv
-  [41.0, 28.9],     // Istanbul
-]
-
-// Dynamic arc pairs between nodes
-const ARC_PAIRS: [number, number][] = [
-  [0, 1],   [1, 10],  [10, 11], [11, 5],
-  [8, 0],   [17, 8],  [18, 0],  [16, 0],
-  [1, 2],   [2, 14],  [14, 13], [13, 12],
-  [12, 4],  [4, 6],   [6, 7],   [7, 1],
-  [4, 3],   [3, 15],  [0, 9],   [9, 19],
-  [1, 20],  [20, 25], [6, 21],  [4, 22],
-  [7, 26],  [26, 27], [27, 10], [7, 23],
-  [23, 24],
-]
-
-interface Arc {
-  from: number
-  to: number
-  progress: number
-  speed: number
-  opacity: number
-  width: number
-}
-
-interface ScanRing {
-  node: number
-  r: number
-  maxR: number
-  speed: number
-}
-
-interface PulseNode {
-  node: number
-  phase: number
-  speed: number
-  baseScale: number
-  flare: boolean
+function hexToRgb(hex:string): [number,number,number] {
+  const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+  return r ? [parseInt(r[1],16), parseInt(r[2],16), parseInt(r[3],16)] : [0,200,255]
 }
 
 export function SignalGlobe({ className = '' }: { className?: string }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const rafRef = useRef(0)
-  const yawRef = useRef(0)
-  const dragRef = useRef(0)
-  const velRef = useRef(0)
+  const wrapRef    = useRef<HTMLDivElement>(null)
+  const canvasRef  = useRef<HTMLCanvasElement>(null)
+  const rafRef     = useRef(0)
+  const phiRef     = useRef(0)   // tracks cobe's own phi so overlay stays in sync
 
   useEffect(() => {
+    const wrap   = wrapRef.current
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!wrap || !canvas) return
+
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // HiDPI resize handling
+    // Resize overlay canvas to match wrapper
     const resize = () => {
       const pr = window.devicePixelRatio || 1
-      const rect = canvas.getBoundingClientRect()
-      canvas.width = Math.max(1, Math.floor(rect.width * pr))
-      canvas.height = Math.max(1, Math.floor(rect.height * pr))
+      canvas.width  = wrap.offsetWidth  * pr
+      canvas.height = wrap.offsetHeight * pr
       ctx.setTransform(pr, 0, 0, pr, 0, 0)
     }
     resize()
     const ro = new ResizeObserver(resize)
-    ro.observe(canvas)
+    ro.observe(wrap)
 
-    // Interactive drag to spin with smooth inertia
-    let dragging = false
-    let lastX = 0
-
-    const onDown = (e: MouseEvent) => {
-      dragging = true
-      lastX = e.clientX
-      velRef.current = 0
-    }
-
-    const onUp = () => {
-      dragging = false
-    }
-
-    const onMove = (e: MouseEvent) => {
-      if (!dragging) return
-      const dx = (e.clientX - lastX) * 0.0065
-      dragRef.current += dx
-      velRef.current = dx * 0.65
-      lastX = e.clientX
-    }
-
-    canvas.addEventListener('mousedown', onDown)
-    window.addEventListener('mouseup', onUp)
-    window.addEventListener('mousemove', onMove)
-
-    // Arcs
-    const arcs: Arc[] = ARC_PAIRS.map(([f, t]) => ({
-      from: f,
-      to: t,
+    // Arc animation state
+    const arcState = ARCS.map(arc => ({
+      ...arc,
       progress: Math.random(),
-      speed: 0.002 + Math.random() * 0.0025,
-      opacity: 0.65 + Math.random() * 0.35,
-      width: 1.1 + Math.random() * 0.8,
+      speed:    0.0018 + Math.random() * 0.002,
+      opacity:  0.7 + Math.random() * 0.3,
     }))
-
-    // Expanding sonar scan rings
-    const rings: ScanRing[] = [0, 1, 2, 4, 6, 8, 12, 18].map((nodeIdx) => ({
-      node: nodeIdx,
-      r: Math.random() * 18,
-      maxR: 22 + Math.random() * 10,
-      speed: 0.22 + Math.random() * 0.1,
-    }))
-
-    // Pulse nodes
-    const pulses: PulseNode[] = NODES.map((_, i) => ({
-      node: i,
-      phase: Math.random() * Math.PI * 2,
-      speed: 0.035 + Math.random() * 0.035,
-      baseScale: 0.85 + Math.random() * 0.45,
-      flare: i % 4 === 0, // Key hubs get brilliant diamond glints
-    }))
-
-    const orbitSpeed = 0.008
-    let orbitAngle = 0
-    let gTime = 0  // global clock for XYZ drift
-
-    // Z-axis roll rotation
-    function rotZ(v: Vec3, a: number): Vec3 {
-      const c = Math.cos(a), s = Math.sin(a)
-      return { x: v.x * c - v.y * s, y: v.x * s + v.y * c, z: v.z }
-    }
 
     const draw = () => {
-      const W = canvas.getBoundingClientRect().width
-      const H = canvas.getBoundingClientRect().height
-      if (W === 0 || H === 0) {
-        rafRef.current = requestAnimationFrame(draw)
-        return
-      }
-
-      const cx = W / 2
-      const cy = H / 2
-      const R = Math.min(W, H) * 0.38
-      const FOV = Math.min(W, H) * 1.35
+      const W = wrap.offsetWidth
+      const H = wrap.offsetHeight
+      if (W === 0) { rafRef.current = requestAnimationFrame(draw); return }
 
       ctx.clearRect(0, 0, W, H)
-      gTime += 0.006  // advance time for multi-axis motion
 
-      // Primary YAW auto-rotation + drag inertia
-      if (!dragging) {
-        velRef.current *= 0.94
-        dragRef.current += velRef.current
-        yawRef.current += 0.003
-      }
-      const yaw = yawRef.current + dragRef.current
-      orbitAngle += orbitSpeed
+      // cobe auto-rotates at ~0.0025 rad/frame — mirror that here
+      phiRef.current += 0.0025
+      const phi   = phiRef.current
+      const theta = 0.28   // matches globeConfig.theta
 
-      // ── True XYZ 3D motion ──
-      // PITCH (X-axis): gentle nod — two sine waves at coprime frequencies
-      const pitch = 0.22
-        + Math.sin(gTime * 0.68) * 0.14
-        + Math.sin(gTime * 0.41 + 1.2) * 0.06
-      // ROLL (Z-axis): slow side-wobble that reveals depth parallax
-      const roll  = Math.sin(gTime * 0.52 + 0.8) * 0.10
-        + Math.cos(gTime * 0.29 + 2.1) * 0.04
+      const R   = Math.min(W, H) * 0.42
+      const cx  = W / 2
+      const cy  = H / 2
+      const FOV = Math.min(W, H) * 1.35
 
-      // Combined 3D pipeline: Yaw → Pitch → Roll
-      const tf = (v: Vec3) => rotZ(rotX(rotY(v, yaw), pitch), roll)
+      const tf = (v: V3) => rotX(rotY(v, phi), theta)
 
-      // ── 1. Outer atmosphere glow — subtle red, matches section bg ──
-      const atm = ctx.createRadialGradient(cx, cy, R * 0.88, cx, cy, R * 1.28)
-      atm.addColorStop(0,   'rgba(220, 38, 38, 0.0)')
-      atm.addColorStop(0.5, 'rgba(220, 38, 38, 0.07)')
-      atm.addColorStop(1,   'transparent')
-      ctx.beginPath()
-      ctx.arc(cx, cy, R * 1.28, 0, Math.PI * 2)
-      ctx.fillStyle = atm
-      ctx.fill()
-
-      // ── 2. Sphere fill — solid match to section bg so back-face never shows through ──
-      ctx.beginPath()
-      ctx.arc(cx, cy, R, 0, Math.PI * 2)
-      ctx.fillStyle = '#080f16'
-      ctx.fill()
-
-      // Clip subsequent sphere interior elements to the globe disk
-      ctx.save()
-      ctx.beginPath()
-      ctx.arc(cx, cy, R - 0.5, 0, Math.PI * 2)
-      ctx.clip()
-
-      // ── 3. Electric Blue Latitude Wireframe ──
-      const LAT_N = 14
-      for (let i = 1; i < LAT_N; i++) {
-        const lat = -90 + (180 / LAT_N) * i
-        const isEquator = i === LAT_N / 2
-        const SEG = 180
-        ctx.beginPath()
-        let first = true
-        for (let s = 0; s <= SEG; s++) {
-          const lon = -180 + (360 / SEG) * s
-          const tv = tf(ll(lat, lon, R))
-          if (tv.z < 0) {
-            first = true
-            continue
-          }
-          const [px, py] = project(tv, cx, cy, FOV)
-          const depth = Math.max(0, tv.z / R) // 0..1
-          const alpha = (isEquator ? 0.55 : 0.28) + depth * (isEquator ? 0.45 : 0.35)
-          ctx.strokeStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`
-          ctx.lineWidth = isEquator ? 1.4 : 0.8 + depth * 0.45
-          if (first) {
-            ctx.moveTo(px, py)
-            first = false
-          } else {
-            ctx.lineTo(px, py)
-          }
-        }
-        ctx.stroke()
-      }
-
-      // ── 4. Electric Blue Longitude Wireframe ──
-      const LON_N = 20
-      for (let i = 0; i < LON_N; i++) {
-        const lon = -180 + (360 / LON_N) * i
-        const SEG = 180
-        ctx.beginPath()
-        let first = true
-        for (let s = 0; s <= SEG; s++) {
-          const lat = -90 + (180 / SEG) * s
-          const tv = tf(ll(lat, lon, R))
-          if (tv.z < 0) {
-            first = true
-            continue
-          }
-          const [px, py] = project(tv, cx, cy, FOV)
-          const depth = Math.max(0, tv.z / R)
-          const alpha = 0.22 + depth * 0.40
-          ctx.strokeStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`
-          ctx.lineWidth = 0.7 + depth * 0.38
-          if (first) {
-            ctx.moveTo(px, py)
-            first = false
-          } else {
-            ctx.lineTo(px, py)
-          }
-        }
-        ctx.stroke()
-      }
-
-      ctx.restore() // End globe disk clip
-
-      // ── 5. Outer rim — very faint, no hard edge ──
-      ctx.beginPath()
-      ctx.arc(cx, cy, R, 0, Math.PI * 2)
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'
-      ctx.lineWidth = 1
-      ctx.shadowBlur = 0
-      ctx.stroke()
-
-      // ── 6. Luminous Data Stream Arcs ──
-      for (const arc of arcs) {
+      // Draw arcs
+      for (const arc of arcState) {
         arc.progress += arc.speed
         if (arc.progress > 1) arc.progress = 0
 
-        const [lat1, lon1] = NODES[arc.from]
-        const [lat2, lon2] = NODES[arc.to]
-        const pA = ll(lat1, lon1, R)
-        const pB = ll(lat2, lon2, R)
-        const SEG = 54
-        const LIFT = 0.12 // Elevated path
+        const pA = ll2v(arc.startLat, arc.startLng, R)
+        const pB = ll2v(arc.endLat,   arc.endLng,   R)
+        const SEG  = 60
+        const LIFT = arc.arcAlt * 0.9
+        const [r,g,b] = hexToRgb(arc.color)
 
-        const getArcPt = (t: number): Vec3 => {
+        const getpt = (t:number): V3 => {
           const base = slerp(pA, pB, t, R)
-          const len = Math.sqrt(base.x ** 2 + base.y ** 2 + base.z ** 2)
+          const len  = Math.sqrt(base.x**2+base.y**2+base.z**2)
           const lift = 1 + LIFT * Math.sin(t * Math.PI)
-          return {
-            x: (base.x / len) * (R * lift),
-            y: (base.y / len) * (R * lift),
-            z: (base.z / len) * (R * lift),
-          }
+          return { x:base.x/len*(R*lift), y:base.y/len*(R*lift), z:base.z/len*(R*lift) }
         }
 
-        // Faint full arc trajectory trail
+        // Faint full trail
         ctx.beginPath()
         let first = true
-        for (let s = 0; s <= SEG; s++) {
-          const pt = tf(getArcPt(s / SEG))
-          if (pt.z < -R * 0.15) {
-            first = true
-            continue
-          }
-          const [px, py] = project(pt, cx, cy, FOV)
-          if (first) {
-            ctx.moveTo(px, py)
-            first = false
-          } else {
-            ctx.lineTo(px, py)
-          }
+        for (let s=0; s<=SEG; s++) {
+          const pt = tf(getpt(s/SEG))
+          if (pt.z < -R*0.1) { first=true; continue }
+          const [px,py] = proj(pt, cx, cy, FOV)
+          if (first) { ctx.moveTo(px,py); first=false } else ctx.lineTo(px,py)
         }
-        ctx.strokeStyle = 'rgba(16, 187, 224, 0.18)'
-        ctx.lineWidth = arc.width * 0.6
-        ctx.stroke()
+        ctx.strokeStyle = `rgba(${r},${g},${b},0.15)`
+        ctx.lineWidth   = 1; ctx.stroke()
 
-        // Luminous moving laser head segment
-        const HEAD = 0.2
-        const ps = Math.max(0, arc.progress - HEAD)
-        const pe = arc.progress
-        ctx.beginPath()
-        first = true
-        for (let s = 0; s <= SEG; s++) {
-          const t = s / SEG
-          if (t < ps || t > pe) continue
-          const pt = tf(getArcPt(t))
-          if (pt.z < -R * 0.15) {
-            first = true
-            continue
-          }
-          const [px, py] = project(pt, cx, cy, FOV)
-          if (first) {
-            ctx.moveTo(px, py)
-            first = false
-          } else {
-            ctx.lineTo(px, py)
-          }
+        // Bright moving head
+        const ps = Math.max(0, arc.progress - 0.16)
+        ctx.beginPath(); first = true
+        for (let s=0; s<=SEG; s++) {
+          const t = s/SEG; if (t<ps||t>arc.progress) continue
+          const pt = tf(getpt(t))
+          if (pt.z < -R*0.1) { first=true; continue }
+          const [px,py] = proj(pt, cx, cy, FOV)
+          if (first) { ctx.moveTo(px,py); first=false } else ctx.lineTo(px,py)
         }
-        ctx.strokeStyle = `rgba(0, 229, 255, ${arc.opacity.toFixed(2)})`
-        ctx.lineWidth = arc.width * 1.2
-        ctx.shadowColor = '#00e5ff'
-        ctx.shadowBlur = 10
-        ctx.stroke()
-        ctx.shadowBlur = 0
+        ctx.strokeStyle = `rgba(${r},${g},${b},${arc.opacity.toFixed(2)})`
+        ctx.lineWidth   = 1.6
+        ctx.shadowColor = arc.color; ctx.shadowBlur = 10
+        ctx.stroke(); ctx.shadowBlur = 0
 
-        // Bright laser head particle
-        const hp = tf(getArcPt(arc.progress))
-        if (hp.z > -R * 0.1) {
-          const [hx, hy] = project(hp, cx, cy, FOV)
-          ctx.beginPath()
-          ctx.arc(hx, hy, 2.2, 0, Math.PI * 2)
+        // Head dot
+        const hpt = tf(getpt(arc.progress))
+        if (hpt.z > -R*0.05) {
+          const [hx,hy] = proj(hpt, cx, cy, FOV)
+          ctx.beginPath(); ctx.arc(hx, hy, 2.4, 0, Math.PI*2)
           ctx.fillStyle = '#ffffff'
-          ctx.shadowColor = '#00e5ff'
-          ctx.shadowBlur = 12
-          ctx.fill()
-          ctx.shadowBlur = 0
-        }
-      }
-
-      // ── 7. Expanding Radar Scan Rings (Sonar Pulses) ──
-      for (const ring of rings) {
-        ring.r += ring.speed
-        const progress = ring.r / ring.maxR
-        const opacity = Math.max(0, 1 - progress)
-        if (ring.r > ring.maxR) {
-          ring.r = 0
-        }
-        const [lat, lon] = NODES[ring.node]
-        const tv = tf(ll(lat, lon, R))
-        if (tv.z < 0) continue
-        const [npx, npy, nsc] = project(tv, cx, cy, FOV)
-        const sr = ring.r * nsc * R * 0.038
-        ctx.beginPath()
-        ctx.arc(npx, npy, sr, 0, Math.PI * 2)
-        ctx.strokeStyle = `rgba(0, 229, 255, ${(opacity * 0.7).toFixed(2)})`
-        ctx.lineWidth = 1.1
-        ctx.shadowColor = '#00e5ff'
-        ctx.shadowBlur = 6
-        ctx.stroke()
-        ctx.shadowBlur = 0
-      }
-
-      // ── 8. Shiny Glowing Blue Telemetry Dots (Nodes) ──
-      for (const pn of pulses) {
-        pn.phase += pn.speed
-        const [lat, lon] = NODES[pn.node]
-        const tv = tf(ll(lat, lon, R))
-        if (tv.z < -R * 0.02) continue // Hide backside nodes
-
-        const depth = Math.max(0.1, (tv.z + R) / (2 * R)) // 0.1..1
-        const [npx, npy, nsc] = project(tv, cx, cy, FOV)
-        const pulse = Math.sin(pn.phase)
-        const alpha = Math.min(1, depth * 1.5)
-        const radius = (1 + 0.35 * pulse) * pn.baseScale * 2.8 * nsc
-
-        // 8a. Shiny Outer Halo (Cyan aura)
-        const haloR = radius * 4.2
-        const glow = ctx.createRadialGradient(npx, npy, 0, npx, npy, haloR)
-        glow.addColorStop(0, `rgba(0, 229, 255, ${(alpha * 0.75).toFixed(2)})`)
-        glow.addColorStop(0.4, `rgba(16, 187, 224, ${(alpha * 0.32).toFixed(2)})`)
-        glow.addColorStop(1, 'transparent')
-        ctx.beginPath()
-        ctx.arc(npx, npy, haloR, 0, Math.PI * 2)
-        ctx.fillStyle = glow
-        ctx.fill()
-
-        // 8b. Electric Blue Core
-        ctx.beginPath()
-        ctx.arc(npx, npy, radius * 1.1, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(0, 210, 255, ${alpha.toFixed(2)})`
-        ctx.shadowColor = '#00e5ff'
-        ctx.shadowBlur = 10
-        ctx.fill()
-        ctx.shadowBlur = 0
-
-        // 8c. Shiny Brilliant White/Cyan Specular Center
-        ctx.beginPath()
-        ctx.arc(npx, npy, radius * 0.52, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(1, alpha * 1.2).toFixed(2)})`
-        ctx.fill()
-
-        // 8d. Star Glint / Specular Cross Flare on Key Nodes
-        if (pn.flare && pulse > 0.45 && depth > 0.4) {
-          const flareLen = (6 + pulse * 4) * nsc
-          const flareAlpha = (pulse - 0.45) * 1.8 * alpha
-          ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1, flareAlpha).toFixed(2)})`
-          ctx.lineWidth = 1
-          ctx.beginPath()
-          // Horizontal ray
-          ctx.moveTo(npx - flareLen, npy)
-          ctx.lineTo(npx + flareLen, npy)
-          // Vertical ray
-          ctx.moveTo(npx, npy - flareLen)
-          ctx.lineTo(npx, npy + flareLen)
-          ctx.stroke()
-        }
-      }
-
-      // ── 9. Orbiting spark satellites ──
-      for (let i = 0; i < 2; i++) {
-        const sparkAngle = orbitAngle + (i * Math.PI)
-        const orbitR2 = R * 1.18
-        const orbitTilt2 = -0.35
-        const sparkRaw: Vec3 = {
-          x: orbitR2 * Math.cos(sparkAngle),
-          y: orbitR2 * Math.sin(sparkAngle) * Math.sin(orbitTilt2),
-          z: orbitR2 * Math.sin(sparkAngle) * Math.cos(orbitTilt2),
-        }
-        const sparkPt = rotY(sparkRaw, yaw * 0.4)
-        if (sparkPt.z > -orbitR2 * 0.3) {
-          const [spx, spy] = project(sparkPt, cx, cy, FOV)
-          ctx.beginPath()
-          ctx.arc(spx, spy, 2, 0, Math.PI * 2)
-          ctx.fillStyle = '#ffffff'
-          ctx.shadowColor = '#dc2626'
-          ctx.shadowBlur = 8
-          ctx.fill()
-          ctx.shadowBlur = 0
+          ctx.shadowColor = arc.color; ctx.shadowBlur = 14
+          ctx.fill(); ctx.shadowBlur = 0
         }
       }
 
@@ -524,23 +210,30 @@ export function SignalGlobe({ className = '' }: { className?: string }) {
     return () => {
       cancelAnimationFrame(rafRef.current)
       ro.disconnect()
-      canvas.removeEventListener('mousedown', onDown)
-      window.removeEventListener('mouseup', onUp)
-      window.removeEventListener('mousemove', onMove)
     }
   }, [])
 
   return (
-    <canvas
-      ref={canvasRef}
-      className={`signal-globe-canvas ${className}`}
-      aria-hidden="true"
-      style={{
-        display: 'block',
-        width: '100%',
-        height: '100%',
-        cursor: 'grab',
-      }}
-    />
+    <div
+      ref={wrapRef}
+      className={`signal-globe-wrapper ${className}`}
+      style={{ position:'relative', width:'100%', height:'100%' }}
+    >
+      {/* cobe renders the globe sphere + land masses + glow */}
+      <World globeConfig={globeConfig} />
+
+      {/* 2D overlay for animated arcs + node dots */}
+      <canvas
+        ref={canvasRef}
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset:    0,
+          width:    '100%',
+          height:   '100%',
+          pointerEvents: 'none',
+        }}
+      />
+    </div>
   )
 }

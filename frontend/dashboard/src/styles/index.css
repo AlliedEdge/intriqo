@@ -481,7 +481,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .public-footer { display: flex; align-items: center; gap: 18px; min-height: 78px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.67rem; }
 
-.final-cta-section { border-top: 1px solid var(--border); background: radial-gradient(ellipse 60% 60% at 75% 50%, rgba(16, 187, 224, 0.08) 0%, transparent 65%), var(--bg-soft); position: relative; overflow: visible; padding: 28px 0 36px; }
+.final-cta-section { border-top: 1px solid var(--border); background: radial-gradient(ellipse 60% 70% at 78% 50%, rgba(0,180,255,0.10) 0%, transparent 65%), var(--bg-soft); position: relative; overflow: visible; padding: 28px 0 36px; }
 
 .final-cta-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr); align-items: center; gap: 32px; position: relative; z-index: 2; }
 
@@ -1501,61 +1501,70 @@ select { padding-right: 28px; }
    Signal Globe — Side-by-side cyber globe in final-cta-section
    ========================================================================== */
 
-/* Keyframe: slow 3D float/hover — globe bobs and tilts on all 3 axes */
 @keyframes globe-float {
-  0%   { transform: translateY(0)    rotateX(0deg)    rotateZ(0deg); }
-  25%  { transform: translateY(-14px) rotateX(2.5deg)  rotateZ(-1deg); }
-  50%  { transform: translateY(-22px) rotateX(-1.5deg) rotateZ(1.2deg); }
-  75%  { transform: translateY(-10px) rotateX(3deg)    rotateZ(-0.8deg); }
-  100% { transform: translateY(0)    rotateX(0deg)    rotateZ(0deg); }
+  0%   { transform: translateY(0px)   rotateZ(0deg); }
+  25%  { transform: translateY(-16px) rotateZ(-0.8deg); }
+  50%  { transform: translateY(-26px) rotateZ(0.6deg); }
+  75%  { transform: translateY(-12px) rotateZ(-0.5deg); }
+  100% { transform: translateY(0px)   rotateZ(0deg); }
 }
 
-/* Keyframe: glow pulse in sync with the float */
 @keyframes globe-glow-pulse {
-  0%, 100% { opacity: 0.7; transform: translateY(-50%) scale(0.95); }
-  50%       { opacity: 1;   transform: translateY(-50%) scale(1.1); }
+  0%, 100% { opacity: 0.65; transform: translateY(-50%) scale(0.92); }
+  50%       { opacity: 1.00; transform: translateY(-50%) scale(1.12); }
 }
 
-/* Globe wrapper — overflows upward to "hover" above the section */
+/* Globe wrapper */
 .final-cta-globe-wrap {
   position: relative;
   width: 100%;
-  max-width: 460px;
+  max-width: 520px;
   aspect-ratio: 1 / 1;
-  margin: -60px auto -30px;          /* negative top margin = lifts into section above */
+  margin: -80px auto -40px;
   z-index: 3;
-  perspective: 900px;               /* adds CSS 3D depth */
-  transform-style: preserve-3d;
-
-  /* The float/hover animation */
-  animation: globe-float 7s ease-in-out infinite;
-
-  /* Multi-layer glow drop-shadow to sell the 3D levitation */
+  animation: globe-float 8s ease-in-out infinite;
   filter:
-    drop-shadow(0 28px 48px rgba(16, 187, 224, 0.55))
-    drop-shadow(0 8px  18px rgba(0, 229, 255, 0.35))
-    drop-shadow(0 50px 90px rgba(16, 187, 224, 0.18));
+    drop-shadow(0 0   50px rgba(0, 200, 255, 0.60))
+    drop-shadow(0 24px 52px rgba(0, 180, 255, 0.40))
+    drop-shadow(0 48px 90px rgba(0, 160, 240, 0.22));
 }
 
-.final-cta-globe-wrap .signal-globe-canvas {
+/* Inner motion div and canvas both fill the wrapper */
+.signal-globe-wrapper,
+.signal-globe-inner {
   width: 100%;
   height: 100%;
-  pointer-events: auto;
 }
 
-/* Ambient cyan bloom centered behind the globe on the right */
+.signal-globe-wrapper {
+  width: 100%;
+  height: 100%;
+}
+
+.signal-globe-inner {
+  display: block;
+}
+
+/* cobe renders a canvas — make it fill the wrapper */
+.final-cta-globe-wrap canvas {
+  width:  100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+/* Ambient cyan bloom behind the globe */
 .final-cta-section::after {
   content: '';
   position: absolute;
   top: 50%;
-  right: 8%;
-  width: 420px;
-  height: 420px;
-  background: radial-gradient(circle, rgba(16, 187, 224, 0.18) 0%, rgba(0, 180, 240, 0.06) 50%, transparent 72%);
+  right: 6%;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(0,200,255,0.22) 0%, rgba(0,150,255,0.08) 50%, transparent 72%);
   pointer-events: none;
   z-index: 0;
-  filter: blur(52px);
-  animation: globe-glow-pulse 7s ease-in-out infinite;
+  filter: blur(60px);
+  animation: globe-glow-pulse 8s ease-in-out infinite;
 }
 
 @media (max-width: 900px) {
@@ -1564,14 +1573,7 @@ select { padding-right: 28px; }
     gap: 24px;
     text-align: center;
   }
-  .final-cta-content {
-    align-items: center;
-  }
-  .final-cta-actions {
-    justify-content: center;
-  }
-  .final-cta-globe-wrap {
-    max-width: 300px;
-    margin: -40px auto -20px;
-  }
+  .final-cta-content { align-items: center; }
+  .final-cta-actions { justify-content: center; }
+  .final-cta-globe-wrap { max-width: 320px; margin: -30px auto -20px; }
 }
