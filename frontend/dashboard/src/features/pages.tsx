@@ -16,10 +16,11 @@ import {
 } from '@/components/ui'
 import { LandingHero } from './landing/LandingHero'
 import { PacketToFindings } from './landing/PacketToFindings'
+import { SignalGlobe } from '@/components/SignalGlobe'
 
 const GITHUB_URL = 'https://github.com/AlliedEdge/intriqo'
-const DOCS_URL = `${GITHUB_URL}/tree/main/docs`
-const CONTRIBUTING_URL = `${GITHUB_URL}/blob/main/CONTRIBUTING.md`
+// const DOCS_URL = `${GITHUB_URL}/tree/main/docs`
+// const CONTRIBUTING_URL = `${GITHUB_URL}/blob/main/CONTRIBUTING.md`
 
 function Reveal({ children, className = '' }: { children: ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -85,7 +86,19 @@ export function LandingPage() {
       <main>
         <PacketToFindings />
 
-        <section id="product" className="public-section container">
+        <section id="product" className="public-section section-light-red">
+          <div className="slr-bg-canvas" aria-hidden="true">
+            <div className="slr-blob slr-blob-1" /><div className="slr-blob slr-blob-2" /><div className="slr-blob slr-blob-3" />
+            <div className="slr-neon-blob" />
+            <div className="slr-grid" />
+            <div className="slr-ring slr-ring-1" /><div className="slr-ring slr-ring-2" />
+            <div className="slr-beam slr-beam-1" /><div className="slr-beam slr-beam-2" /><div className="slr-beam slr-beam-3" />
+            <div className="slr-scan" />
+            <div className="slr-dots"><span /><span /><span /><span /><span /><span /><span /><span /><span /><span /></div>
+            <div className="slr-sparks"><span /><span /><span /><span /><span /><span /></div>
+            <div className="slr-corner slr-corner-tl" /><div className="slr-corner slr-corner-tr" /><div className="slr-corner slr-corner-bl" /><div className="slr-corner slr-corner-br" />
+          </div>
+          <div className="container slr-content">
           <Reveal><div className="section-intro"><p className="eyebrow">PACKET TO FINDING</p><h2>A clear path from packet to finding.</h2><p>Each layer has a defined responsibility and a typed handoff, so detection, investigation, policy, and audit records remain connected.</p></div></Reveal>
           <Reveal className="reveal-delay-1"><div className="capability-grid">
             <Capability icon="network" index="01" title="C++ detection" copy="IPv4 parsing, TCP/UDP/ICMP handling, flow tracking, and deterministic port-scan detection." />
@@ -94,6 +107,7 @@ export function LandingPage() {
             <Capability icon="bot" index="04" title="Investigation" copy="The multi-agent design routes evidence through investigation tasks toward structured findings." />
             <Capability icon="shield" index="05" title="Auditability" copy="Policy decisions and operator-facing records keep the path from event to finding inspectable." />
           </div></Reveal>
+          </div>{/* .slr-content */}
         </section>
 
         <section id="architecture" className="public-section architecture-section">
@@ -103,24 +117,51 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section id="get-intriqo" className="public-section download-section">
-          <div className="container">
+        <section id="get-intriqo" className="public-section download-section section-light-red">
+          <div className="slr-bg-canvas" aria-hidden="true">
+            <div className="slr-blob slr-blob-1" /><div className="slr-blob slr-blob-2" /><div className="slr-blob slr-blob-3" />
+            <div className="slr-neon-blob" />
+            <div className="slr-grid" />
+            <div className="slr-ring slr-ring-1" /><div className="slr-ring slr-ring-2" />
+            <div className="slr-beam slr-beam-1" /><div className="slr-beam slr-beam-2" /><div className="slr-beam slr-beam-3" />
+            <div className="slr-scan" />
+            <div className="slr-dots"><span /><span /><span /><span /><span /><span /><span /><span /><span /><span /></div>
+            <div className="slr-sparks"><span /><span /><span /><span /><span /><span /></div>
+            <div className="slr-corner slr-corner-tl" /><div className="slr-corner slr-corner-tr" /><div className="slr-corner slr-corner-bl" /><div className="slr-corner slr-corner-br" />
+          </div>
+          <div className="container slr-content">
              <Reveal><div className="section-intro"><p className="eyebrow">GET STARTED</p><h2>Run the control plane where you work.</h2><p>Use the repository's source and Docker workflows to run the web application, backend, and supporting services locally.</p></div></Reveal>
             <Reveal className="reveal-delay-1"><div className="download-grid">
               <DownloadCard icon="code" label="SOURCE" title="Clone the repository" copy="Use the documented Python, C++, Node.js, and Docker prerequisites." command="git clone https://github.com/AlliedEdge/intriqo.git" href={`${GITHUB_URL}#quick-start`} />
               <DownloadCard icon="layers" label="CONTAINERIZED" title="Docker Compose" copy="Start PostgreSQL and the project services using the repository compose file." command="docker compose up -d" href={`${GITHUB_URL}#quick-start`} />
               <DownloadCard icon="terminal" label="LINUX" title="Linux development" copy="Build the engine, run the control plane, and start the Vite dashboard from source." command="cd frontend/dashboard && npm run dev" href={`${GITHUB_URL}#quick-start`} />
             </div></Reveal>
-          </div>
-        </section>
-
-        <section className="public-section developer-section container">
-           <Reveal><div className="developer-copy"><p className="eyebrow">FOR DEVELOPERS</p><h2>Start with the workflow, not a mock.</h2><p>Generate a SecurityEvent, follow its persistence through the control plane, and inspect the connected incident, task, finding, and audit entries in the dashboard.</p><div className="developer-links"><ExternalLink href={GITHUB_URL} className="inline-link">GitHub <Icon name="arrow-up-right" size={14} /></ExternalLink><ExternalLink href={DOCS_URL} className="inline-link">Documentation <Icon name="arrow-up-right" size={14} /></ExternalLink><ExternalLink href={`${GITHUB_URL}/tree/main/contracts`} className="inline-link">Contracts <Icon name="arrow-up-right" size={14} /></ExternalLink><Link to="/login" className="inline-link">Open dashboard <Icon name="arrow-right" size={14} /></Link></div></div></Reveal>
-          <Reveal className="reveal-delay-1"><div className="code-window"><div className="code-window-bar"><span /><span /><span /><small>quick-start.sh</small></div><pre><code><span className="code-comment"># start infrastructure</span>{'\n'}docker compose up -d{'\n'}{'\n'}<span className="code-comment"># start the SOC dashboard</span>{'\n'}cd frontend/dashboard && npm install{'\n'}npm run dev</code></pre></div></Reveal>
+          </div>{/* .slr-content */}
         </section>
 
         <section className="public-section final-cta-section">
-          <Reveal><div className="container final-cta"><div><p className="eyebrow">FOLLOW THE SIGNAL</p><h2>Build your next investigation on evidence.</h2><p>Explore the source, run the stack locally, and see where the workflow takes you.</p></div><div className="final-cta-actions"><ExternalLink href={GITHUB_URL} className="button button-primary">Open GitHub <Icon name="arrow-up-right" size={16} /></ExternalLink><Link to="/signup" className="button button-secondary">Create account <Icon name="arrow-right" size={16} /></Link></div></div></Reveal>
+          <div className="container final-cta-layout">
+            <Reveal className="final-cta-content">
+              <div>
+                <p className="eyebrow">FOLLOW THE SIGNAL</p>
+                <h2>Build your next investigation on evidence.</h2>
+                <p className="final-cta-desc">
+                  Explore the source, run the stack locally, and see where the workflow takes you.
+                </p>
+              </div>
+              <div className="final-cta-actions">
+                <ExternalLink href={GITHUB_URL} className="button button-primary">
+                  Open GitHub <Icon name="arrow-up-right" size={16} />
+                </ExternalLink>
+                <Link to="/signup" className="button button-secondary">
+                  Create account <Icon name="arrow-right" size={16} />
+                </Link>
+              </div>
+            </Reveal>
+            <div className="final-cta-globe-wrap" aria-hidden="true">
+              <SignalGlobe />
+            </div>
+          </div>
         </section>
       </main>
 
@@ -131,10 +172,6 @@ export function LandingPage() {
 
 function Capability({ icon, index, title, copy }: { icon: 'network' | 'server' | 'bot' | 'shield' | 'activity' | 'layers'; index: string; title: string; copy: string }) {
   return <article className="capability"><div className="capability-top"><span className="capability-icon"><Icon name={icon} size={20} /></span><span className="capability-index">{index}</span></div><h3>{title}</h3><p>{copy}</p></article>
-}
-
-function ResourceRow({ icon, title, copy, href }: { icon: 'github' | 'book' | 'code' | 'alert'; title: string; copy: string; href: string }) {
-  return <ExternalLink href={href} className="resource-row"><span className="resource-icon"><Icon name={icon} size={18} /></span><span><strong>{title}</strong><small>{copy}</small></span><Icon name="arrow-up-right" size={16} /></ExternalLink>
 }
 
 function DownloadCard({ icon, label, title, copy, command, href }: { icon: 'code' | 'layers' | 'terminal'; label: string; title: string; copy: string; command: string; href: string }) {
