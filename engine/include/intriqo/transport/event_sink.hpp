@@ -2,6 +2,7 @@
 
 #include "intriqo/events/security_event.hpp"
 #include <string>
+#include <mutex>
 
 namespace intriqo::transport {
 
@@ -29,8 +30,13 @@ public:
     HttpEventSink();
     explicit HttpEventSink(Config config);
     bool submit(const events::SecurityEvent&) noexcept override;
+    [[nodiscard]] long last_status_code() const noexcept;
+    [[nodiscard]] std::string last_error() const;
 private:
     Config config_;
+    mutable std::mutex mutex_;
+    long last_status_code_{0};
+    std::string last_error_;
 };
 
 } // namespace intriqo::transport
