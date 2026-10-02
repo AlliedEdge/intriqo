@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column
-import enum
 
 from intriqo.db.base import Base
 
@@ -25,6 +25,7 @@ class User(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     username: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
     email: Mapped[str] = mapped_column(String(256), unique=True, nullable=False, index=True)
+    full_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     hashed_password: Mapped[str] = mapped_column(String(256), nullable=False)
     role: Mapped[str] = mapped_column(
         Enum(UserRole, name="user_role", native_enum=False),
@@ -43,3 +44,11 @@ class User(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    @property
+    def is_email_verified(self) -> bool:
+        """Return whether the account has completed email verification."""
+        return self.email_verified_at is not None

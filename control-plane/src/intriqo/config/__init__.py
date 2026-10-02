@@ -8,7 +8,9 @@ Import the module-level ``settings`` singleton wherever settings are needed:
 from __future__ import annotations
 
 from functools import lru_cache
+from urllib.parse import urlsplit
 
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -42,6 +44,45 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "CHANGE_ME_IN_PRODUCTION"
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 30
+
+    # ── Transactional email / account recovery ────────────────────────────────
+    # These values are server-side only.  In local development, an absent API
+    # key makes email delivery a no-op so tests and the local API stay usable.
+    resend_api_key: SecretStr | None = None
+    resend_from_email: str = "Intriqo Security <no-reply@example.com>"
+    frontend_base_url: str = "http://localhost:5173"
+    email_verification_token_expire_minutes: int = 60
+    password_reset_token_expire_minutes: int = 30
+    require_email_verification: bool = True
+
+    @field_validator("frontend_base_url")
+    @classmethod
+    def validate_frontend_base_url(cls, value: str) -> str:
+        parts = urlsplit(value)
+        if (
+            parts.scheme not in {"http", "https"}
+            or not parts.hostname
+            or parts.username
+            or parts.password
+            or parts.query
+            or parts.fragment
+        ):
+            raise ValueError("FRONTEND_BASE_URL must be an HTTP(S) URL without credentials, query, or fragment")
+        return value.rstrip("/")
+
+    @field_validator("email_verification_token_expire_minutes")
+    @classmethod
+    def validate_verification_expiry(cls, value: int) -> int:
+        if not 1 <= value <= 1440:
+            raise ValueError("EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES must be between 1 and 1440")
+        return value
+
+    @field_validator("password_reset_token_expire_minutes")
+    @classmethod
+    def validate_reset_expiry(cls, value: int) -> int:
+        if not 1 <= value <= 60:
+            raise ValueError("PASSWORD_RESET_TOKEN_EXPIRE_MINUTES must be between 1 and 60")
+        return value
 
     # ── Engine client ────────────────────────────────────────────────────────
     engine_event_endpoint: str = "http://localhost:8080/events"

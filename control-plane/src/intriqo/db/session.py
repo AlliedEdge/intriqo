@@ -31,6 +31,7 @@ def _build_engine(database_url: str) -> AsyncEngine:
     return create_async_engine(
         clean_url,
         echo=settings.debug,
+        hide_parameters=True,
         pool_pre_ping=True,
         pool_size=10,
         max_overflow=20,

@@ -86,6 +86,8 @@ def create_app() -> FastAPI:
             """Remove non-serialisable values (e.g. exception instances) from one error dict."""
             safe = {}
             for k, v in err.items():
+                if k == "input" and request.url.path.startswith("/api/v1/auth/"):
+                    continue
                 if k == "ctx" and isinstance(v, dict):
                     safe[k] = {ck: str(cv) if not isinstance(cv, (str, int, float, bool, type(None))) else cv
                                 for ck, cv in v.items()}
@@ -112,7 +114,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-        logger.exception("Unhandled exception on %s %s", request.method, request.url)
+        logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
@@ -129,8 +131,9 @@ def create_app() -> FastAPI:
         """Basic health check — reports application status and DB connectivity."""
         db_status = "unknown"
         try:
-            from intriqo.db.session import get_engine
             from sqlalchemy import text
+
+            from intriqo.db.session import get_engine
             engine = get_engine()
             async with engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
