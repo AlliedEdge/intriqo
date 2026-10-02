@@ -1,19 +1,47 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { apiConfiguration } from '@/api/client'
-import { auditApi, eventsApi, findingsApi, incidentsApi, tasksApi } from '@/api'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { ApiError, apiConfiguration } from '@/api/client'
+import { auditApi, authApi, eventsApi, findingsApi, incidentsApi, tasksApi } from '@/api'
 import { useAuth } from '@/app/providers/AuthProvider'
 import { useApi } from '@/hooks/useApi'
 import { findingSeverity, formatDate, formatDateOnly, prettyJson, relativeTime, shortId, toIsoDateTime, truncate } from '@/lib/format'
-import type { AgentTask, AuditLog, Finding, Incident, SecurityEvent, Severity } from '@/types/api'
+import type { AgentTask, AuditLog, Finding, Incident, MessageResponse, RegisteredUser, SecurityEvent, Severity } from '@/types/api'
+import {
+  FORGOT_PASSWORD_CONFIRMATION, isValidAccountToken, PASSWORD_HELP,
+  passwordStrength, RESEND_VERIFICATION_CONFIRMATION, validateEmail, validatePassword,
+} from './auth'
 import {
   Badge, Button, Card, EmptyState, ErrorState, Icon, KeyValue, LoadingRows, PageHeader,
   Pagination, SectionHeading, SeverityBadge, StatusBadge, TableFrame, Logo,
 } from '@/components/ui'
+import { LandingHero } from './landing/LandingHero'
+import { PacketToFindings } from './landing/PacketToFindings'
 
 const GITHUB_URL = 'https://github.com/AlliedEdge/intriqo'
 const DOCS_URL = `${GITHUB_URL}/tree/main/docs`
 const CONTRIBUTING_URL = `${GITHUB_URL}/blob/main/CONTRIBUTING.md`
+
+function Reveal({ children, className = '' }: { children: ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const element = ref.current
+    if (!element || typeof IntersectionObserver === 'undefined') {
+      element?.classList.add('is-visible')
+      return
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        element.classList.add('is-visible')
+        observer.unobserve(element)
+      }
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  return <div ref={ref} className={`reveal ${className}`}>{children}</div>
+}
 
 function asString(value: unknown): string {
   if (typeof value === 'string') return value
@@ -32,7 +60,7 @@ function ExternalLink({ href, children, className = '' }: { href: string; childr
 function ArchitectureFlow({ compact = false }: { compact?: boolean }) {
   const steps = compact
     ? ['Network traffic', 'C++ IDS', 'SecurityEvent', 'Control plane', 'Findings']
-    : ['Network traffic', 'C++ IDS engine', 'SecurityEvent', 'FastAPI control plane', 'PostgreSQL', 'Agent tasks', 'Investigation agent', 'Findings / policy', 'Controlled response']
+    : ['Network traffic', 'C++ IDS engine', 'SecurityEvent', 'Python control plane', 'AgentTask', 'Investigation', 'Policy decision', 'Audit log']
 
   return (
     <div className={`architecture-flow${compact ? ' architecture-flow-compact' : ''}`}>
@@ -52,83 +80,47 @@ function ArchitectureFlow({ compact = false }: { compact?: boolean }) {
 export function LandingPage() {
   return (
     <div className="public-site">
-        <header className="public-nav container">
-        <Link to="/" aria-label="Intriqo home"><Logo /></Link>
-        <nav className="public-links" aria-label="Public navigation">
-          <a href="#product">Product</a>
-          <a href="#architecture">Architecture</a>
-          <a href={DOCS_URL} target="_blank" rel="noreferrer">Docs</a>
-          <a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
-        </nav>
-        <div className="public-actions">
-          <ExternalLink href={`${GITHUB_URL}#quick-start`} className="nav-text-link">Download</ExternalLink>
-          <Link className="button button-secondary button-sm" to="/login">Sign in</Link>
-        </div>
-      </header>
+      <LandingHero />
 
       <main>
-        <section className="hero-section container">
-          <div className="hero-copy">
-            <p className="eyebrow"><span className="status-pulse" />OPEN-SOURCE SECURITY OPERATIONS</p>
-            <h1>Understand every signal before it becomes an incident.</h1>
-            <p className="hero-lede">Intriqo connects a high-performance C++ network IDS to an authenticated control plane, PostgreSQL persistence, and deterministic investigation workflows.</p>
-            <div className="hero-actions">
-              <ExternalLink href={GITHUB_URL} className="button button-primary">View on GitHub <Icon name="arrow-up-right" size={16} /></ExternalLink>
-              <ExternalLink href={`${GITHUB_URL}#quick-start`} className="button button-secondary">Download <Icon name="download" size={16} /></ExternalLink>
-              <Link to="/login" className="button button-ghost">Open dashboard <Icon name="arrow-right" size={16} /></Link>
-            </div>
-            <div className="hero-notes"><span><Icon name="check" size={14} /> IPv4 packet parsing</span><span><Icon name="check" size={14} /> Deterministic port-scan detection</span><span><Icon name="check" size={14} /> Auditable workflow</span></div>
-          </div>
-          <div className="hero-visual" aria-label="Intriqo data flow">
-            <div className="visual-header"><span className="visual-kicker">CONTROL PLANE / DATA FLOW</span><span className="visual-live"><span className="status-pulse" />REST API</span></div>
-            <div className="signal-grid" />
-            <div className="hero-pipeline"><ArchitectureFlow compact /></div>
-            <div className="hero-visual-footer"><span>DETECTION</span><span>INVESTIGATION</span><span>DECISION</span></div>
-          </div>
-        </section>
+        <PacketToFindings />
 
         <section id="product" className="public-section container">
-          <div className="section-intro"><p className="eyebrow">WHAT SHIPS TODAY</p><h2>A clear path from packet to finding.</h2><p>Each layer has a defined responsibility, a typed contract, and a place in the operator workflow. No invented telemetry. No opaque automation.</p></div>
-          <div className="capability-grid">
-            <Capability icon="network" index="01" title="C++ IDS engine" copy="IPv4 packet parsing, TCP/UDP/ICMP handling, flow tracking, and deterministic port-scan detection." />
-            <Capability icon="server" index="02" title="Control plane" copy="FastAPI services for authenticated event, incident, task, finding, and audit management." />
-            <Capability icon="bot" index="03" title="Investigation agent" copy="A deterministic investigation workflow that turns an agent task into structured findings." />
-            <Capability icon="shield" index="04" title="Policy boundary" copy="Agent work is represented as auditable tasks and findings before any controlled action is considered." />
-            <Capability icon="activity" index="05" title="Observability" copy="Follow the relationship between security events, incidents, agent tasks, findings, and audit records." />
-          </div>
+          <Reveal><div className="section-intro"><p className="eyebrow">PACKET TO FINDING</p><h2>A clear path from packet to finding.</h2><p>Each layer has a defined responsibility and a typed handoff, so detection, investigation, policy, and audit records remain connected.</p></div></Reveal>
+          <Reveal className="reveal-delay-1"><div className="capability-grid">
+            <Capability icon="network" index="01" title="C++ detection" copy="IPv4 parsing, TCP/UDP/ICMP handling, flow tracking, and deterministic port-scan detection." />
+            <Capability icon="layers" index="02" title="SecurityEvent" copy="A typed JSON handoff carries detected network signals from the IDS into the rest of the SOC." />
+            <Capability icon="server" index="03" title="Control plane" copy="FastAPI services connect authenticated events, incidents, tasks, findings, and audit logs." />
+            <Capability icon="bot" index="04" title="Investigation" copy="The multi-agent design routes evidence through investigation tasks toward structured findings." />
+            <Capability icon="shield" index="05" title="Auditability" copy="Policy decisions and operator-facing records keep the path from event to finding inspectable." />
+          </div></Reveal>
         </section>
 
         <section id="architecture" className="public-section architecture-section">
           <div className="container">
-            <div className="section-intro"><p className="eyebrow">SYSTEM ARCHITECTURE</p><h2>One workflow. Explicit boundaries.</h2><p>Intriqo keeps detection, persistence, investigation, and response policy visible as separate, inspectable stages.</p></div>
-            <div className="architecture-card"><ArchitectureFlow /><div className="architecture-caption"><span><span className="legend-dot legend-cyan" />Implemented path</span><span><span className="legend-dot legend-slate" />Contract boundary</span><ExternalLink href={`${GITHUB_URL}/blob/main/docs/architecture/system-architecture.md`} className="inline-link">Read the architecture <Icon name="arrow-up-right" size={14} /></ExternalLink></div></div>
-          </div>
-        </section>
-
-        <section id="open-source" className="public-section container split-section">
-          <div className="section-intro"><p className="eyebrow">OPEN SOURCE BY DEFAULT</p><h2>Built to be read, run, and improved.</h2><p>The repository is the product surface. Source, contracts, deployment notes, and architecture decisions stay close to the code.</p><ExternalLink href={GITHUB_URL} className="inline-link">Browse the repository <Icon name="arrow-up-right" size={14} /></ExternalLink></div>
-          <div className="resource-list">
-            <ResourceRow icon="github" title="GitHub repository" copy="Source code, issues, and release history." href={GITHUB_URL} />
-            <ResourceRow icon="book" title="Documentation" copy="Architecture, engine, agents, and security model." href={DOCS_URL} />
-            <ResourceRow icon="code" title="Contributing" copy="Development conventions and pull request guidance." href={CONTRIBUTING_URL} />
-            <ResourceRow icon="alert" title="Security reporting" copy="Responsible disclosure process for security issues." href={`${GITHUB_URL}/blob/main/SECURITY.md`} />
+            <Reveal><div className="section-intro"><p className="eyebrow">CONTROL PLANE / INVESTIGATION</p><h2>One workflow. Explicit boundaries.</h2><p>Intriqo keeps detection, persistence, investigation, policy, and auditability visible as separate, inspectable stages.</p></div></Reveal>
+            <Reveal className="reveal-delay-1"><div className="architecture-card"><ArchitectureFlow /><div className="architecture-caption"><span><span className="legend-dot legend-cyan" />Implemented path</span><span><span className="legend-dot legend-slate" />Contract boundary</span><ExternalLink href={`${GITHUB_URL}/blob/main/docs/architecture/system-architecture.md`} className="inline-link">Read the architecture <Icon name="arrow-up-right" size={14} /></ExternalLink></div></div></Reveal>
           </div>
         </section>
 
         <section id="get-intriqo" className="public-section download-section">
           <div className="container">
-            <div className="section-intro"><p className="eyebrow">GET INTRIQO</p><h2>Run the control plane where you work.</h2><p>There is no native desktop package in this phase. Use the repository's source and Docker workflows to run the web application and backend locally.</p></div>
-            <div className="download-grid">
+             <Reveal><div className="section-intro"><p className="eyebrow">GET STARTED</p><h2>Run the control plane where you work.</h2><p>Use the repository's source and Docker workflows to run the web application, backend, and supporting services locally.</p></div></Reveal>
+            <Reveal className="reveal-delay-1"><div className="download-grid">
               <DownloadCard icon="code" label="SOURCE" title="Clone the repository" copy="Use the documented Python, C++, Node.js, and Docker prerequisites." command="git clone https://github.com/AlliedEdge/intriqo.git" href={`${GITHUB_URL}#quick-start`} />
               <DownloadCard icon="layers" label="CONTAINERIZED" title="Docker Compose" copy="Start PostgreSQL and the project services using the repository compose file." command="docker compose up -d" href={`${GITHUB_URL}#quick-start`} />
               <DownloadCard icon="terminal" label="LINUX" title="Linux development" copy="Build the engine, run the control plane, and start the Vite dashboard from source." command="cd frontend/dashboard && npm run dev" href={`${GITHUB_URL}#quick-start`} />
-            </div>
+            </div></Reveal>
           </div>
         </section>
 
         <section className="public-section developer-section container">
-          <div className="developer-copy"><p className="eyebrow">FOR DEVELOPERS</p><h2>Start with the workflow, not a mock.</h2><p>Generate a real SecurityEvent, watch it persist through the control plane, and inspect the resulting incident, task, finding, and audit entries in the dashboard.</p><div className="developer-links"><ExternalLink href={GITHUB_URL} className="inline-link">GitHub <Icon name="arrow-up-right" size={14} /></ExternalLink><ExternalLink href={DOCS_URL} className="inline-link">Documentation <Icon name="arrow-up-right" size={14} /></ExternalLink><ExternalLink href={`${GITHUB_URL}/tree/main/contracts`} className="inline-link">Contracts <Icon name="arrow-up-right" size={14} /></ExternalLink><Link to="/login" className="inline-link">Open dashboard <Icon name="arrow-right" size={14} /></Link></div></div>
-          <div className="code-window"><div className="code-window-bar"><span /><span /><span /><small>quick-start.sh</small></div><pre><code><span className="code-comment"># start infrastructure</span>{'\n'}docker compose up -d{'\n'}{'\n'}<span className="code-comment"># start the SOC dashboard</span>{'\n'}cd frontend/dashboard && npm install{'\n'}npm run dev</code></pre></div>
+           <Reveal><div className="developer-copy"><p className="eyebrow">FOR DEVELOPERS</p><h2>Start with the workflow, not a mock.</h2><p>Generate a SecurityEvent, follow its persistence through the control plane, and inspect the connected incident, task, finding, and audit entries in the dashboard.</p><div className="developer-links"><ExternalLink href={GITHUB_URL} className="inline-link">GitHub <Icon name="arrow-up-right" size={14} /></ExternalLink><ExternalLink href={DOCS_URL} className="inline-link">Documentation <Icon name="arrow-up-right" size={14} /></ExternalLink><ExternalLink href={`${GITHUB_URL}/tree/main/contracts`} className="inline-link">Contracts <Icon name="arrow-up-right" size={14} /></ExternalLink><Link to="/login" className="inline-link">Open dashboard <Icon name="arrow-right" size={14} /></Link></div></div></Reveal>
+          <Reveal className="reveal-delay-1"><div className="code-window"><div className="code-window-bar"><span /><span /><span /><small>quick-start.sh</small></div><pre><code><span className="code-comment"># start infrastructure</span>{'\n'}docker compose up -d{'\n'}{'\n'}<span className="code-comment"># start the SOC dashboard</span>{'\n'}cd frontend/dashboard && npm install{'\n'}npm run dev</code></pre></div></Reveal>
+        </section>
+
+        <section className="public-section final-cta-section">
+          <Reveal><div className="container final-cta"><div><p className="eyebrow">FOLLOW THE SIGNAL</p><h2>Build your next investigation on evidence.</h2><p>Explore the source, run the stack locally, and see where the workflow takes you.</p></div><div className="final-cta-actions"><ExternalLink href={GITHUB_URL} className="button button-primary">Open GitHub <Icon name="arrow-up-right" size={16} /></ExternalLink><Link to="/signup" className="button button-secondary">Create account <Icon name="arrow-right" size={16} /></Link></div></div></Reveal>
         </section>
       </main>
 
@@ -137,7 +129,7 @@ export function LandingPage() {
   )
 }
 
-function Capability({ icon, index, title, copy }: { icon: 'network' | 'server' | 'bot' | 'shield' | 'activity'; index: string; title: string; copy: string }) {
+function Capability({ icon, index, title, copy }: { icon: 'network' | 'server' | 'bot' | 'shield' | 'activity' | 'layers'; index: string; title: string; copy: string }) {
   return <article className="capability"><div className="capability-top"><span className="capability-icon"><Icon name={icon} size={20} /></span><span className="capability-index">{index}</span></div><h3>{title}</h3><p>{copy}</p></article>
 }
 
@@ -149,17 +141,90 @@ function DownloadCard({ icon, label, title, copy, command, href }: { icon: 'code
   return <article className="download-card"><div className="download-card-top"><span className="capability-icon"><Icon name={icon} size={19} /></span><span className="card-label">{label}</span></div><h3>{title}</h3><p>{copy}</p><code>{command}</code><ExternalLink href={href} className="inline-link">Read setup <Icon name="arrow-up-right" size={14} /></ExternalLink></article>
 }
 
+function AuthLayout({ title, description, eyebrow = 'OPERATOR ACCESS', asideTitle = 'Your security operations start here.', children }: { title: string; description: string; eyebrow?: string; asideTitle?: string; children: ReactNode }) {
+  return <div className="auth-page"><div className="auth-layout">
+    <aside className="auth-aside">
+      <Link to="/" aria-label="Back to Intriqo"><Logo /></Link>
+      <div><p className="eyebrow">SECURITY OPERATIONS / CONTROL PLANE</p><h1>{asideTitle}</h1><p>Access the investigation workflow backed by the Intriqo control plane. Events, incidents, findings, and audit history stay connected.</p></div>
+      <div className="auth-aside-flow"><ArchitectureFlow compact /></div>
+      <span className="auth-build">OPEN SOURCE / ALLIEDEDGE</span>
+    </aside>
+    <main className="auth-card-wrap">
+      <Card className="auth-card">
+        <div className="auth-card-header"><Link to="/" className="auth-mobile-logo" aria-label="Intriqo home"><Logo compact /></Link><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>{description}</p></div>
+        {children}
+      </Card>
+      <Link to="/" className="back-public"><Icon name="chevron-left" size={14} /> Back to public site</Link>
+    </main>
+  </div></div>
+}
+
+function AuthMessage({ children, error = false }: { children: ReactNode; error?: boolean }) {
+  return <div className={error ? 'form-error' : 'form-success'} role={error ? 'alert' : 'status'}><Icon name={error ? 'alert' : 'check'} size={16} /><span>{children}</span></div>
+}
+
+function authError(reason: unknown, fallback: string): string {
+  return reason instanceof Error ? reason.message : fallback
+}
+
+function NewPasswordFields({ password, confirmation, onPasswordChange, onConfirmationChange, disabled }: { password: string; confirmation: string; onPasswordChange: (value: string) => void; onConfirmationChange: (value: string) => void; disabled: boolean }) {
+  const [visible, setVisible] = useState(false)
+  const strength = passwordStrength(password)
+  return <>
+    <label className="field-label" htmlFor="new-password">Password</label>
+    <div className="auth-password-field"><input id="new-password" name="password" type={visible ? 'text' : 'password'} autoComplete="new-password" value={password} onChange={(event) => onPasswordChange(event.target.value)} placeholder="Create a strong password" disabled={disabled} required aria-describedby="password-help password-strength" /><button type="button" className="password-toggle" aria-label={visible ? 'Hide passwords' : 'Show passwords'} aria-pressed={visible} onClick={() => setVisible((value) => !value)} disabled={disabled}>{visible ? 'Hide' : 'Show'}</button></div>
+    <div className="password-feedback"><div id="password-strength" className={`password-strength password-strength-${strength.score}`}><span className="password-strength-track" aria-hidden="true">{[1, 2, 3, 4].map((step) => <span key={step} className={step <= strength.score ? 'is-filled' : ''} />)}</span><span>{strength.label}</span></div><p id="password-help">{PASSWORD_HELP}</p></div>
+    <label className="field-label" htmlFor="confirm-password">Confirm password<input id="confirm-password" name="confirm-password" type={visible ? 'text' : 'password'} autoComplete="new-password" value={confirmation} onChange={(event) => onConfirmationChange(event.target.value)} placeholder="Enter your password again" disabled={disabled} required /></label>
+  </>
+}
+
+function ResendVerification({ initialEmail = '' }: { initialEmail?: string }) {
+  const [email, setEmail] = useState(initialEmail)
+  const [error, setError] = useState<string | null>(null)
+  const [sent, setSent] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (submitting) return
+    setSent(false)
+    const invalid = validateEmail(email)
+    setError(invalid)
+    if (invalid) return
+    setSubmitting(true)
+    try {
+      await authApi.resendVerification(email.trim())
+      setSent(true)
+    } catch (reason) {
+      setError(authError(reason, 'Unable to send a verification link. Try again.'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  return <form className="auth-form auth-resend" onSubmit={submit} noValidate aria-busy={submitting}>
+    <div className="auth-section-heading"><h3>Need a new verification link?</h3><p>Use the email address you registered with. Only your newest link will work.</p></div>
+    <label className="field-label" htmlFor="verification-email">Email address<input id="verification-email" name="email" type="email" autoComplete="email" value={email} onChange={(event) => { setEmail(event.target.value); setSent(false) }} placeholder="you@example.com" disabled={submitting} required /></label>
+    {error && <AuthMessage error>{error}</AuthMessage>}
+    {sent && <AuthMessage>{RESEND_VERIFICATION_CONFIRMATION}</AuthMessage>}
+    <Button type="submit" variant="secondary" disabled={submitting || sent}>{submitting ? 'Sending verification link…' : sent ? 'Verification link requested' : 'Resend verification email'}</Button>
+  </form>
+}
+
 export function LoginPage() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
-  const [username, setUsername] = useState('')
+  const location = useLocation()
+  const loginState = location.state as { username?: string } | null
+  const [username, setUsername] = useState(typeof loginState?.username === 'string' ? loginState.username : '')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [needsVerification, setNeedsVerification] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (submitting) return
     setError(null)
+    setNeedsVerification(false)
     if (!username.trim() || !password) {
       setError('Enter your username and password to continue.')
       return
@@ -170,12 +235,193 @@ export function LoginPage() {
       navigate('/dashboard', { replace: true })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Sign in failed. Try again.')
+      setNeedsVerification(reason instanceof ApiError && reason.code === 'EMAIL_NOT_VERIFIED')
     } finally {
       setSubmitting(false)
     }
   }
 
-  return <div className="auth-page"><div className="auth-layout"><div className="auth-aside"><Link to="/" aria-label="Back to Intriqo"><Logo /></Link><div><p className="eyebrow">SECURITY OPERATIONS / CONTROL PLANE</p><h1>Sign in to your SOC.</h1><p>Access the investigation workflow backed by the Intriqo control plane. Events, incidents, findings, and audit history stay connected.</p></div><div className="auth-aside-flow"><ArchitectureFlow compact /></div><span className="auth-build">OPEN SOURCE / ALLIEDEDGE</span></div><main className="auth-card-wrap"><Card className="auth-card"><div className="auth-card-header"><Link to="/" className="auth-mobile-logo"><Logo compact /></Link><p className="eyebrow">OPERATOR ACCESS</p><h2>Welcome back</h2><p>Use your Intriqo control-plane credentials.</p></div><form onSubmit={submit} className="auth-form" noValidate><label className="field-label" htmlFor="username">Username<input id="username" name="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="analyst" disabled={submitting} /></label><label className="field-label" htmlFor="password">Password<input id="password" name="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" disabled={submitting} /></label>{error && <div className="form-error" role="alert"><Icon name="alert" size={16} />{error}</div>}<Button type="submit" disabled={submitting} className="auth-submit">{submitting ? 'Signing in…' : 'Sign in'}<Icon name="arrow-right" size={16} /></Button></form><p className="auth-help">Authentication is handled by the FastAPI control plane. No social login is enabled.</p></Card><Link to="/" className="back-public"><Icon name="chevron-left" size={14} /> Back to public site</Link></main></div></div>
+  return <AuthLayout title="Welcome back" description="Use your Intriqo control-plane credentials." asideTitle="Sign in to your SOC.">
+    <form onSubmit={submit} className="auth-form" noValidate aria-busy={submitting}>
+      <label className="field-label" htmlFor="username">Username<input id="username" name="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="analyst" disabled={submitting} required /></label>
+      <label className="field-label" htmlFor="password">Password<input id="password" name="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" disabled={submitting} required /></label>
+      <Link to="/forgot-password" className="inline-link auth-forgot-link">Forgot password?</Link>
+      {error && <AuthMessage error>{error}</AuthMessage>}
+      {needsVerification && <Link className="inline-link" to="/verify-email">Resend your verification email <Icon name="arrow-right" size={14} /></Link>}
+      <Button type="submit" disabled={submitting} className="auth-submit">{submitting ? 'Signing in…' : 'Sign in'}<Icon name="arrow-right" size={16} /></Button>
+    </form>
+    <p className="auth-help">New to Intriqo? <Link className="inline-link" to="/signup">Create an account</Link></p>
+  </AuthLayout>
+}
+
+export function SignupPage() {
+  const [fullName, setFullName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [registered, setRegistered] = useState<RegisteredUser | null>(null)
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (submitting) return
+    const invalid = !fullName.trim() ? 'Enter your full name.'
+      : validateEmail(email) || validatePassword(password, confirmation)
+    setError(invalid)
+    if (invalid) return
+    setSubmitting(true)
+    try {
+      const account = await authApi.register({ full_name: fullName.trim(), email: email.trim(), password })
+      setRegistered(account)
+      setPassword('')
+      setConfirmation('')
+    } catch (reason) {
+      setError(authError(reason, 'Unable to create your account. Try again.'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (registered) return <AuthLayout title="Check your email" description="Your verification link has been sent to your registered email address." eyebrow="ACCOUNT CREATED">
+    <div className="auth-state"><AuthMessage>Your verification link has been sent to <strong>{registered.email}</strong>. Open it to finish setting up your account.</AuthMessage><p className="auth-detail">Your sign-in username is <strong className="mono">{registered.username}</strong>. Keep it handy when you return to the dashboard.</p></div>
+    <ResendVerification initialEmail={registered.email} />
+      <p className="auth-help">Already verified? <Link className="inline-link" to="/login" state={{ username: registered.username }}>Sign in</Link></p>
+  </AuthLayout>
+
+  return <AuthLayout title="Create your account" description="Join your Intriqo control plane and start investigating." eyebrow="GET STARTED">
+    <form className="auth-form" onSubmit={submit} noValidate aria-busy={submitting}>
+      <label className="field-label" htmlFor="full-name">Full name<input id="full-name" name="name" autoComplete="name" value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Alex Morgan" disabled={submitting} required /></label>
+      <label className="field-label" htmlFor="signup-email">Email address<input id="signup-email" name="email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" disabled={submitting} required /></label>
+      <NewPasswordFields password={password} confirmation={confirmation} onPasswordChange={setPassword} onConfirmationChange={setConfirmation} disabled={submitting} />
+      {error && <AuthMessage error>{error}</AuthMessage>}
+      <Button type="submit" disabled={submitting} className="auth-submit">{submitting ? 'Creating your account…' : 'Create account'}<Icon name="arrow-right" size={16} /></Button>
+    </form>
+    <p className="auth-help">Already have an account? <Link className="inline-link" to="/login">Sign in</Link></p>
+  </AuthLayout>
+}
+
+export function VerifyEmailPage() {
+  const [params] = useSearchParams()
+  const token = params.get('token') || ''
+  return <VerifyEmailResult token={token} key={token} />
+}
+
+function VerifyEmailResult({ token }: { token: string }) {
+  const validToken = isValidAccountToken(token)
+  const [state, setState] = useState<'checking' | 'success' | 'error' | 'empty'>(validToken ? 'checking' : token ? 'error' : 'empty')
+  const [error, setError] = useState<string | null>(token && !validToken ? 'This verification link is incomplete or invalid. Request a new link below.' : null)
+  const verification = useRef<Promise<MessageResponse> | null>(null)
+
+  useEffect(() => {
+    if (!validToken) return
+    let active = true
+    // Reuse this single-use operation during React StrictMode's effect replay.
+    verification.current ??= authApi.verifyEmail(token)
+    void verification.current.then(() => {
+      if (active) setState('success')
+    }, (reason: unknown) => {
+      if (!active) return
+      setError(reason instanceof ApiError && reason.code === 'INVALID_OR_EXPIRED_TOKEN'
+        ? 'This verification link has expired or was already used. If you have already verified your email, sign in. Otherwise, request a new link below.'
+        : authError(reason, 'Unable to verify your email. Request a new link below.'))
+      setState('error')
+    })
+    return () => { active = false }
+  }, [token, validToken])
+
+  return <AuthLayout title={state === 'success' ? 'Email verified' : state === 'checking' ? 'Verifying your email' : 'Verify your email'} description={state === 'success' ? 'You’re all set. Your email address has been confirmed.' : 'Confirm your email address to complete your account setup.'} eyebrow="EMAIL VERIFICATION">
+    <div className="auth-state">
+      {state === 'checking' && <div className="auth-progress" role="status"><span className="loading-spinner" /> Checking your verification link…</div>}
+      {state === 'success' && <><AuthMessage>Your email has been verified successfully. Sign in to open your workspace.</AuthMessage><Link className="button button-primary auth-submit" to="/login">Continue to sign in <Icon name="arrow-right" size={16} /></Link></>}
+      {state === 'error' && <AuthMessage error>{error}</AuthMessage>}
+      {state === 'empty' && <p className="auth-detail">Open the verification link in your email, or enter your email below to request a new one.</p>}
+    </div>
+    {(state === 'error' || state === 'empty') && <ResendVerification />}
+    {state !== 'success' && <p className="auth-help">Already verified? <Link className="inline-link" to="/login">Sign in</Link> <span className="auth-link-separator">·</span> <Link className="inline-link" to="/signup">Create an account</Link></p>}
+  </AuthLayout>
+}
+
+export function ForgotPasswordPage() {
+  const [email, setEmail] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [sent, setSent] = useState(false)
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (submitting) return
+    const invalid = validateEmail(email)
+    setError(invalid)
+    if (invalid) return
+    setSubmitting(true)
+    try {
+      await authApi.forgotPassword(email.trim())
+      setSent(true)
+    } catch (reason) {
+      setError(authError(reason, 'Unable to request a password reset. Try again.'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  return <AuthLayout title={sent ? 'Check your inbox' : 'Forgot your password?'} description={sent ? 'Follow the link in your email to choose a new password.' : 'Enter the email address associated with your Intriqo account.'} eyebrow="ACCOUNT RECOVERY" asideTitle="Get back to your workspace.">
+    {sent ? <div className="auth-state"><AuthMessage>{FORGOT_PASSWORD_CONFIRMATION}</AuthMessage><p className="auth-detail">Reset links expire and can only be used once. Use the newest email if you requested more than one.</p><Button type="button" variant="secondary" onClick={() => setSent(false)}>Try another email address</Button></div> : <form className="auth-form" onSubmit={submit} noValidate aria-busy={submitting}>
+      <label className="field-label" htmlFor="recovery-email">Email address<input id="recovery-email" name="email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" disabled={submitting} required /></label>
+      {error && <AuthMessage error>{error}</AuthMessage>}
+      <Button type="submit" disabled={submitting} className="auth-submit">{submitting ? 'Sending reset link…' : 'Send reset link'}<Icon name="arrow-right" size={16} /></Button>
+    </form>}
+    <p className="auth-help"><Link className="inline-link" to="/login"><Icon name="chevron-left" size={14} /> Back to sign in</Link> <span className="auth-link-separator">·</span> <Link className="inline-link" to="/signup">Create an account</Link></p>
+  </AuthLayout>
+}
+
+export function ResetPasswordPage() {
+  const [params] = useSearchParams()
+  const token = params.get('token') || ''
+  return <ResetPasswordForm token={token} key={token} />
+}
+
+function ResetPasswordForm({ token }: { token: string }) {
+  const { signOut } = useAuth()
+  const [password, setPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [complete, setComplete] = useState(false)
+  const [expired, setExpired] = useState(false)
+  const validToken = isValidAccountToken(token)
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (submitting || !validToken || expired) return
+    const invalid = validatePassword(password, confirmation)
+    setError(invalid)
+    if (invalid) return
+    setSubmitting(true)
+    try {
+      await authApi.resetPassword(token, password)
+      signOut()
+      setPassword('')
+      setConfirmation('')
+      setComplete(true)
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.code === 'INVALID_OR_EXPIRED_TOKEN') {
+        setExpired(true)
+        setError('This reset link has expired or was already used. Request a new link to reset your password.')
+      } else {
+        setError(authError(reason, 'Unable to reset your password. Try again.'))
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  return <AuthLayout title={complete ? 'Password updated' : 'Choose a new password'} description={complete ? 'Your new password is ready to use.' : 'Use a unique password that you haven’t used elsewhere.'} eyebrow="ACCOUNT RECOVERY" asideTitle="A fresh start. A secure account.">
+     {complete ? <div className="auth-state"><AuthMessage>Password updated successfully. Sign in with your new password to continue.</AuthMessage><Link className="button button-primary auth-submit" to="/login">Continue to sign in <Icon name="arrow-right" size={16} /></Link></div>
+      : !validToken || expired ? <div className="auth-state"><AuthMessage error>{error || 'This reset link is missing or incomplete. Open the full link from your email, or request a new one.'}</AuthMessage><Link className="button button-primary auth-submit" to="/forgot-password">Request a new reset link <Icon name="arrow-right" size={16} /></Link></div>
+        : <form className="auth-form" onSubmit={submit} noValidate aria-busy={submitting}>
+          <NewPasswordFields password={password} confirmation={confirmation} onPasswordChange={setPassword} onConfirmationChange={setConfirmation} disabled={submitting} />
+          {error && <AuthMessage error>{error}</AuthMessage>}
+          <Button type="submit" disabled={submitting} className="auth-submit">{submitting ? 'Updating password…' : 'Reset password'}<Icon name="arrow-right" size={16} /></Button>
+        </form>}
+    {!complete && <p className="auth-help"><Link className="inline-link" to="/login"><Icon name="chevron-left" size={14} /> Back to sign in</Link> <span className="auth-link-separator">·</span> <Link className="inline-link" to="/forgot-password">Request another link</Link></p>}
+  </AuthLayout>
 }
 
 interface DashboardSnapshot {
