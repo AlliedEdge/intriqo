@@ -16,7 +16,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTROL_PLANE = ROOT / "control-plane"
-DEMO = ROOT / "engine" / "build" / "intriqo_port_scan_demo"
+DEMO = Path(os.environ.get("INTRIQO_ENGINE_DEMO", str(ROOT / "engine" / "build" / "intriqo_port_scan_demo")))
 BASE = "http://127.0.0.1:8765"
 
 
@@ -39,7 +39,7 @@ def test_cpp_to_control_plane_vertical_slice() -> None:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(CONTROL_PLANE / "src")
     server = subprocess.Popen([
-        str(CONTROL_PLANE / ".venv" / "bin" / "uvicorn"),
+        sys.executable, "-m", "uvicorn",
         "intriqo.api.app:app", "--host", "127.0.0.1", "--port", "8765",
     ], cwd=CONTROL_PLANE, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:

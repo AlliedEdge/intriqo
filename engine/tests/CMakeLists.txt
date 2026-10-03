@@ -26,3 +26,10 @@ add_subdirectory(unit)
 # Integration tests
 # =============================================================================
 add_subdirectory(integration)
+
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME RuntimeCLI COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_cli.py $<TARGET_FILE:intriqo-engine>)
+    set_tests_properties(RuntimeCLI PROPERTIES TIMEOUT 30)
+endif()
