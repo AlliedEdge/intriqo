@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react'
+import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react'
 import logoUrl from '../../../../assets/branding/intriqo-logo.svg'
 import type { Severity } from '@/types/api'
 
@@ -95,8 +95,15 @@ export function StatusBadge({ status }: { status: string | null | undefined }) {
   return <Badge tone={tone}>{value}</Badge>
 }
 
-export function Card({ children, className = '', ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <section className={`card ${className}`} {...props}>{children}</section>
+export const Card = forwardRef<HTMLElement, HTMLAttributes<HTMLElement>>(
+  ({ children, className = '', ...props }, ref) => (
+    <section ref={ref} className={`card ${className}`} {...props}>{children}</section>
+  )
+)
+Card.displayName = 'Card'
+
+export function AuthMessage({ children, error = false }: { children: ReactNode; error?: boolean }) {
+  return <div className={error ? 'form-error' : 'form-success'} role={error ? 'alert' : 'status'}><Icon name={error ? 'alert' : 'check'} size={16} /><span>{children}</span></div>
 }
 
 export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode }) {

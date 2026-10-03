@@ -1,0 +1,518 @@
+/* ==========================================================================
+   Auth console
+   Full-viewport ConstellationGrid background, centered card.
+   Fully responsive: scrollable on short/narrow viewports, compact on mobile.
+   ========================================================================== */
+
+.auth-console {
+  --ac-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  /* Custom properties so every size calc is derived, not magic numbers */
+  --ac-topbar-h: 80px;          /* clearance to reserve for the fixed topbar  */
+  --ac-card-max: 440px;         /* max card width                             */
+  --ac-stage-px: 20px;          /* horizontal stage padding                   */
+  --ac-card-py: 40px;           /* card vertical padding                      */
+  --ac-card-px: 40px;           /* card horizontal padding                    */
+
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #030407;
+  color: var(--text-primary);
+  isolation: isolate;
+  /* overflow-y: auto allows the page to scroll when the card is taller
+     than the viewport (e.g. signup on a short phone / landscape) */
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Crosshair across the entire page — the whole background is interactive */
+.auth-console { cursor: crosshair; }
+
+/* Restore expected cursors for interactive elements inside the page */
+.auth-console a,
+.auth-console button,
+.auth-console input,
+.auth-console textarea,
+.auth-console select,
+.auth-console label { cursor: auto; }
+
+.auth-console button,
+.auth-console .button,
+.auth-console .inline-link,
+.auth-console .auth-submit,
+.auth-console .password-toggle { cursor: pointer; }
+
+.auth-console input,
+.auth-console textarea { cursor: text; }
+
+/* ── Canvas background ──────────────────────────────────────────────────── */
+
+.auth-console__canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Radial vignette — dims corners so the card pops */
+.auth-console__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 85% 85% at 50% 50%,
+    transparent 28%,
+    rgba(3, 4, 7, 0.52) 66%,
+    rgba(3, 4, 7, 0.80) 100%
+  );
+}
+
+/* ── Topbar ─────────────────────────────────────────────────────────────── */
+
+.auth-console__topbar {
+  position: fixed;
+  z-index: 10;
+  top: 24px;
+  left: 28px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auth-console__brand {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: color 180ms ease;
+}
+
+.auth-console__brand:hover .brand-name { color: var(--primary-bright); }
+
+.auth-console__brand:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.6);
+  outline-offset: 4px;
+}
+
+.auth-console__topbar .brand-mark   { width: 42px; height: 42px; }
+.auth-console__topbar .brand-lockup { font-size: 1rem; letter-spacing: 0.22em; }
+
+.auth-console__ops {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  border-radius: 999px;
+  background: rgba(3, 4, 7, 0.62);
+  color: var(--text-muted);
+  font-family: var(--ac-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.13em;
+  line-height: 1.6;
+  text-transform: uppercase;
+  white-space: nowrap;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.auth-console__ops[data-online="false"] {
+  border-color: rgba(255, 82, 82, 0.3);
+  color: #ff8d8d;
+}
+
+.auth-console__ops[data-online="false"] .status-pulse {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(255, 82, 82, 0.15);
+}
+
+/* ── Stage ──────────────────────────────────────────────────────────────── */
+/*
+ * Strategy: use a flex column that is AT LEAST the full viewport height.
+ * justify-content:center keeps the stack centred when it fits; when the
+ * stack is taller than the viewport the flex container simply grows and
+ * the parent (.auth-console) scrolls — content never gets clipped.
+ *
+ * Top padding clears the fixed topbar. We use padding-top instead of
+ * margin so it's included in the scrollable area.
+ */
+
+.auth-console__stage {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ac-topbar-h) var(--ac-stage-px) 40px;
+  /* Important: don't set overflow here — let .auth-console scroll */
+}
+
+.auth-console__stack {
+  display: flex;
+  width: 100%;
+  max-width: var(--ac-card-max);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+/* ── Telemetry rail ─────────────────────────────────────────────────────── */
+
+.auth-console__telemetry {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: rgba(110, 132, 144, 0.8);
+  font-family: var(--ac-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.auth-console__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 180ms ease;
+  white-space: nowrap;
+}
+
+.auth-console__state::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.auth-console__state[data-phase="verifying"] { color: rgb(56, 189, 248); }
+.auth-console__state[data-phase="verifying"]::before {
+  animation: ac-tick 1.6s ease-in-out infinite;
+}
+.auth-console__state[data-phase="denied"] { color: #ff8d8d; }
+
+/* ── Card ───────────────────────────────────────────────────────────────── */
+
+.card.auth-console__card {
+  position: relative;
+  width: 100%;
+  padding: var(--ac-card-py) var(--ac-card-px);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  border-radius: 18px;
+  background: rgba(4, 6, 12, 0.78);
+  -webkit-backdrop-filter: blur(28px) saturate(130%);
+  backdrop-filter: blur(28px) saturate(130%);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+    0 0 0 1px rgba(56, 189, 248, 0.06),
+    0 32px 80px -24px rgba(0, 0, 0, 0.9);
+  animation: ac-card-enter 680ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-console__corner {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  pointer-events: none;
+}
+.auth-console__corner--tl { top: 13px; left: 13px;   border-right: 0; border-bottom: 0; border-radius: 4px 0 0 0; }
+.auth-console__corner--tr { top: 13px; right: 13px;  border-left: 0;  border-bottom: 0; border-radius: 0 4px 0 0; }
+.auth-console__corner--bl { bottom: 13px; left: 13px;  border-right: 0; border-top: 0;   border-radius: 0 0 0 4px; }
+.auth-console__corner--br { bottom: 13px; right: 13px; border-left: 0;  border-top: 0;   border-radius: 0 0 4px 0; }
+
+.auth-console__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 18px;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 10px;
+  background: rgba(56, 189, 248, 0.07);
+}
+
+.auth-console__mark .brand-mark { width: 22px; height: 22px; }
+
+.auth-console__title {
+  margin: 0;
+  font-size: 1.55rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.auth-console__subtitle {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+/* ── Form primitives ────────────────────────────────────────────────────── */
+
+.auth-console__card .auth-form,
+.auth-console__card .auth-state {
+  gap: 13px;
+  margin-top: 22px;
+}
+
+.auth-console__card .field-label input {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgba(56, 189, 248, 0.14);
+  border-radius: 9px;
+  background: rgba(3, 6, 12, 0.65);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.auth-console__card .field-label input:hover:not(:focus) {
+  border-color: rgba(56, 189, 248, 0.28);
+}
+
+.auth-console__card .field-label input:focus {
+  border-color: rgba(56, 189, 248, 0.55);
+  background: rgba(6, 12, 20, 0.8);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+}
+
+.auth-console__card .auth-password-field input { padding-right: 62px; }
+
+.auth-console__card .password-toggle {
+  right: 10px;
+  font-family: var(--ac-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.auth-console__card .auth-forgot-link  { margin-top: -4px; font-size: 0.7rem; }
+.auth-console__card .password-feedback { margin-top: -6px; }
+
+/* ── Submit ─────────────────────────────────────────────────────────────── */
+
+.auth-console__card .auth-submit {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 2px;
+  border-radius: 9px;
+  font-size: 0.79rem;
+  letter-spacing: 0.02em;
+  box-shadow: 0 12px 30px -14px rgba(56, 189, 248, 0.6);
+}
+
+.auth-console__card .auth-submit:hover:not(:disabled) {
+  box-shadow: 0 14px 34px -14px rgba(56, 189, 248, 0.85);
+}
+
+.auth-console__card .auth-submit:focus-visible,
+.auth-console__card .password-toggle:focus-visible,
+.auth-console__card .inline-link:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.6);
+  outline-offset: 2px;
+}
+
+/* ── Card foot ──────────────────────────────────────────────────────────── */
+
+.auth-console__card .auth-help {
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid rgba(56, 189, 248, 0.1);
+  font-size: 0.71rem;
+  line-height: 1.5;
+}
+
+.auth-console__card .auth-help.auth-console__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.auth-console__card .auth-help .inline-link { font-size: 0.71rem; }
+
+.auth-console__card .auth-resend {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(56, 189, 248, 0.1);
+}
+
+/* ── Footnote ───────────────────────────────────────────────────────────── */
+
+.auth-console__footnote {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  color: rgba(110, 132, 144, 0.5);
+  font-family: var(--ac-mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.auth-console__sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+
+/* ── Keyframes ──────────────────────────────────────────────────────────── */
+
+@keyframes ac-card-enter {
+  from { opacity: 0; transform: translateY(16px) scale(0.983); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+@keyframes ac-tick {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 1; }
+}
+
+/* ==========================================================================
+   Responsive breakpoints
+   768 → tablet portrait
+   640 → large phone landscape / small phone portrait
+   480 → small phone portrait (e.g. SE 375px)
+   390 → tiny phone / very narrow
+   Landscape media query → very short viewports (phones rotated)
+   ========================================================================== */
+
+/* ── 768px — tablet portrait ── */
+@media (max-width: 768px) {
+  .auth-console {
+    --ac-topbar-h: 68px;
+    --ac-card-max: 420px;
+    --ac-stage-px: 18px;
+  }
+}
+
+/* ── 640px — large phones ── */
+@media (max-width: 640px) {
+  .auth-console {
+    --ac-topbar-h: 62px;
+    --ac-card-max: 100%;       /* card spans full width minus stage padding */
+    --ac-stage-px: 14px;
+    --ac-card-py: 28px;
+    --ac-card-px: 22px;
+  }
+
+  .auth-console__topbar {
+    top: 14px;
+    left: 16px;
+    gap: 8px;
+  }
+
+  .auth-console__topbar .brand-mark   { width: 36px; height: 36px; }
+  .auth-console__topbar .brand-lockup { font-size: 0.88rem; letter-spacing: 0.18em; }
+  .auth-console__ops                  { padding: 3px 8px; font-size: 0.52rem; letter-spacing: 0.1em; }
+
+  .auth-console__stage  { padding-bottom: 32px; }
+  .auth-console__stack  { gap: 10px; }
+
+  .auth-console__card { border-radius: 14px; }
+  .auth-console__mark { margin-bottom: 14px; }
+  .auth-console__title { font-size: 1.35rem; }
+  .auth-console__subtitle { font-size: 0.74rem; margin-top: 6px; }
+
+  .auth-console__telemetry { font-size: 0.5rem; letter-spacing: 0.1em; }
+  .auth-console__footnote  { font-size: 0.48rem; letter-spacing: 0.09em; }
+
+  .auth-console__card .auth-form,
+  .auth-console__card .auth-state   { gap: 10px; margin-top: 18px; }
+  .auth-console__card .field-label  { font-size: 0.72rem; }
+  .auth-console__card .field-label input { min-height: 42px; font-size: 0.78rem; }
+  .auth-console__card .auth-submit  { min-height: 42px; }
+  .auth-console__card .auth-help    { margin-top: 14px; padding-top: 12px; }
+  .auth-console__card .auth-resend  { margin-top: 14px; padding-top: 12px; }
+
+  .auth-console__card .auth-help.auth-console__foot {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
+/* ── 480px — small phones (375–390px wide) ── */
+@media (max-width: 480px) {
+  .auth-console {
+    --ac-card-py: 24px;
+    --ac-card-px: 18px;
+    --ac-stage-px: 12px;
+  }
+
+  .auth-console__title { font-size: 1.25rem; }
+
+  .auth-console__card .auth-form,
+  .auth-console__card .auth-state { gap: 9px; margin-top: 16px; }
+}
+
+/* ── 390px — very small / SE ── */
+@media (max-width: 390px) {
+  .auth-console {
+    --ac-card-py: 20px;
+    --ac-card-px: 16px;
+    --ac-stage-px: 10px;
+    --ac-topbar-h: 58px;
+  }
+
+  /* Hide the status pill — too little space */
+  .auth-console__ops { display: none; }
+
+  .auth-console__title { font-size: 1.18rem; }
+}
+
+/* ── Landscape phones (short viewport, ≤ 500px tall) ── */
+/*
+ * When a phone is rotated landscape the viewport can be only 360–430px tall.
+ * min-height:100dvh would push the card off-screen. We switch to padding-only
+ * vertical rhythm so the card is immediately visible and the page scrolls.
+ */
+@media (max-height: 500px) and (max-width: 900px) {
+  .auth-console {
+    --ac-topbar-h: 52px;
+    --ac-card-py: 20px;
+    --ac-card-px: 20px;
+    --ac-stage-px: 16px;
+    --ac-card-max: 520px;
+  }
+
+  /* Don't min-height the stage — let it be as tall as its content */
+  .auth-console__stage {
+    min-height: unset;
+    justify-content: flex-start;
+    padding-bottom: 24px;
+  }
+
+  .auth-console__topbar { top: 10px; left: 16px; }
+  .auth-console__ops    { display: none; }
+
+  .auth-console__title  { font-size: 1.2rem; }
+  .auth-console__mark   { margin-bottom: 12px; width: 28px; height: 28px; }
+  .auth-console__mark .brand-mark { width: 18px; height: 18px; }
+
+  .auth-console__card .auth-form,
+  .auth-console__card .auth-state { gap: 8px; margin-top: 14px; }
+  .auth-console__card .field-label input { min-height: 38px; }
+  .auth-console__card .auth-submit { min-height: 38px; }
+  .auth-console__card .auth-help  { margin-top: 12px; padding-top: 10px; }
+  .auth-console__footnote         { display: none; }
+}

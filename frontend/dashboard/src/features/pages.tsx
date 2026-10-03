@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError, apiConfiguration } from '@/api/client'
 import { auditApi, authApi, eventsApi, findingsApi, incidentsApi, tasksApi } from '@/api'
 import { useAuth } from '@/app/providers/AuthProvider'
@@ -11,11 +11,12 @@ import {
   passwordStrength, RESEND_VERIFICATION_CONFIRMATION, validateEmail, validatePassword,
 } from './auth'
 import {
-  Badge, Button, Card, EmptyState, ErrorState, Icon, KeyValue, LoadingRows, PageHeader,
-  Pagination, SectionHeading, SeverityBadge, StatusBadge, TableFrame, Logo,
+  AuthMessage, Badge, Button, Card, EmptyState, ErrorState, Icon, KeyValue, LoadingRows,
+  PageHeader, Pagination, SectionHeading, SeverityBadge, StatusBadge, TableFrame, Logo,
 } from '@/components/ui'
 import { LandingHero } from './landing/LandingHero'
 import { PacketToFindings } from './landing/PacketToFindings'
+import { AuthConsole } from '@/components/layout/AuthConsole'
 import { GridPulse } from '@/components/GridPulse'
 import { SignalGlobe } from '@/components/SignalGlobe'
 
@@ -59,13 +60,11 @@ function ExternalLink({ href, children, className = '' }: { href: string; childr
   return <a className={className} href={href} target="_blank" rel="noreferrer">{children}<Icon name="arrow-up-right" size={14} /></a>
 }
 
-function ArchitectureFlow({ compact = false }: { compact?: boolean }) {
-  const steps = compact
-    ? ['Network traffic', 'C++ IDS', 'SecurityEvent', 'Control plane', 'Findings']
-    : ['Network traffic', 'C++ IDS engine', 'SecurityEvent', 'Python control plane', 'AgentTask', 'Investigation', 'Policy decision', 'Audit log']
+function ArchitectureFlow() {
+  const steps = ['Network traffic', 'C++ IDS engine', 'SecurityEvent', 'Python control plane', 'AgentTask', 'Investigation', 'Policy decision', 'Audit log']
 
   return (
-    <div className={`architecture-flow${compact ? ' architecture-flow-compact' : ''}`}>
+    <div className="architecture-flow">
       {steps.map((step, index) => (
         <div className="flow-step-wrap" key={step}>
           <div className={`flow-step${index === 0 || index === steps.length - 1 ? ' flow-step-emphasis' : ''}`}>
@@ -169,28 +168,6 @@ function DownloadCard({ icon, label, title, copy, command, href }: { icon: 'code
   return <article className="download-card"><div className="download-card-top"><span className="capability-icon"><Icon name={icon} size={19} /></span><span className="card-label">{label}</span></div><h3>{title}</h3><p>{copy}</p><code>{command}</code><ExternalLink href={href} className="inline-link">Read setup <Icon name="arrow-up-right" size={14} /></ExternalLink></article>
 }
 
-function AuthLayout({ title, description, eyebrow = 'OPERATOR ACCESS', asideTitle = 'Your security operations start here.', children }: { title: string; description: string; eyebrow?: string; asideTitle?: string; children: ReactNode }) {
-  return <div className="auth-page"><div className="auth-layout">
-    <aside className="auth-aside">
-      <Link to="/" aria-label="Back to Intriqo"><Logo /></Link>
-      <div><p className="eyebrow">SECURITY OPERATIONS / CONTROL PLANE</p><h1>{asideTitle}</h1><p>Access the investigation workflow backed by the Intriqo control plane. Events, incidents, findings, and audit history stay connected.</p></div>
-      <div className="auth-aside-flow"><ArchitectureFlow compact /></div>
-      <span className="auth-build">OPEN SOURCE / ALLIEDEDGE</span>
-    </aside>
-    <main className="auth-card-wrap">
-      <Card className="auth-card">
-        <div className="auth-card-header"><Link to="/" className="auth-mobile-logo" aria-label="Intriqo home"><Logo compact /></Link><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>{description}</p></div>
-        {children}
-      </Card>
-      <Link to="/" className="back-public"><Icon name="chevron-left" size={14} /> Back to public site</Link>
-    </main>
-  </div></div>
-}
-
-function AuthMessage({ children, error = false }: { children: ReactNode; error?: boolean }) {
-  return <div className={error ? 'form-error' : 'form-success'} role={error ? 'alert' : 'status'}><Icon name={error ? 'alert' : 'check'} size={16} /><span>{children}</span></div>
-}
-
 function authError(reason: unknown, fallback: string): string {
   return reason instanceof Error ? reason.message : fallback
 }
@@ -237,51 +214,6 @@ function ResendVerification({ initialEmail = '' }: { initialEmail?: string }) {
   </form>
 }
 
-export function LoginPage() {
-  const { signIn } = useAuth()
-  const navigate = useNavigate()
-  const location = useLocation()
-  const loginState = location.state as { username?: string } | null
-  const [username, setUsername] = useState(typeof loginState?.username === 'string' ? loginState.username : '')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [needsVerification, setNeedsVerification] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (submitting) return
-    setError(null)
-    setNeedsVerification(false)
-    if (!username.trim() || !password) {
-      setError('Enter your username and password to continue.')
-      return
-    }
-    setSubmitting(true)
-    try {
-      await signIn(username.trim(), password)
-      navigate('/dashboard', { replace: true })
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Sign in failed. Try again.')
-      setNeedsVerification(reason instanceof ApiError && reason.code === 'EMAIL_NOT_VERIFIED')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return <AuthLayout title="Welcome back" description="Use your Intriqo control-plane credentials." asideTitle="Sign in to your SOC.">
-    <form onSubmit={submit} className="auth-form" noValidate aria-busy={submitting}>
-      <label className="field-label" htmlFor="username">Username<input id="username" name="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="analyst" disabled={submitting} required /></label>
-      <label className="field-label" htmlFor="password">Password<input id="password" name="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" disabled={submitting} required /></label>
-      <Link to="/forgot-password" className="inline-link auth-forgot-link">Forgot password?</Link>
-      {error && <AuthMessage error>{error}</AuthMessage>}
-      {needsVerification && <Link className="inline-link" to="/verify-email">Resend your verification email <Icon name="arrow-right" size={14} /></Link>}
-      <Button type="submit" disabled={submitting} className="auth-submit">{submitting ? 'Signing in…' : 'Sign in'}<Icon name="arrow-right" size={16} /></Button>
-    </form>
-    <p className="auth-help">New to Intriqo? <Link className="inline-link" to="/signup">Create an account</Link></p>
-  </AuthLayout>
-}
-
 export function SignupPage() {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
@@ -311,13 +243,13 @@ export function SignupPage() {
     }
   }
 
-  if (registered) return <AuthLayout title="Check your email" description="Your verification link has been sent to your registered email address." eyebrow="ACCOUNT CREATED">
+  if (registered) return <AuthConsole scope="INTRIQO / SIGNUP" title="Check your email" description="Your verification link has been sent to your registered email address.">
     <div className="auth-state"><AuthMessage>Your verification link has been sent to <strong>{registered.email}</strong>. Open it to finish setting up your account.</AuthMessage><p className="auth-detail">Your sign-in username is <strong className="mono">{registered.username}</strong>. Keep it handy when you return to the dashboard.</p></div>
     <ResendVerification initialEmail={registered.email} />
       <p className="auth-help">Already verified? <Link className="inline-link" to="/login" state={{ username: registered.username }}>Sign in</Link></p>
-  </AuthLayout>
+  </AuthConsole>
 
-  return <AuthLayout title="Create your account" description="Join your Intriqo control plane and start investigating." eyebrow="GET STARTED">
+  return <AuthConsole scope="INTRIQO / SIGNUP" phase={error ? 'denied' : submitting ? 'verifying' : 'idle'} title="Create your account" description="Join your Intriqo control plane and start investigating.">
     <form className="auth-form" onSubmit={submit} noValidate aria-busy={submitting}>
       <label className="field-label" htmlFor="full-name">Full name<input id="full-name" name="name" autoComplete="name" value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Alex Morgan" disabled={submitting} required /></label>
       <label className="field-label" htmlFor="signup-email">Email address<input id="signup-email" name="email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" disabled={submitting} required /></label>
@@ -325,8 +257,8 @@ export function SignupPage() {
       {error && <AuthMessage error>{error}</AuthMessage>}
       <Button type="submit" disabled={submitting} className="auth-submit">{submitting ? 'Creating your account…' : 'Create account'}<Icon name="arrow-right" size={16} /></Button>
     </form>
-    <p className="auth-help">Already have an account? <Link className="inline-link" to="/login">Sign in</Link></p>
-  </AuthLayout>
+    <p className="auth-help auth-console__foot"><span>Already have an account?</span><Link className="inline-link" to="/login">Sign in</Link></p>
+  </AuthConsole>
 }
 
 export function VerifyEmailPage() {
@@ -358,7 +290,7 @@ function VerifyEmailResult({ token }: { token: string }) {
     return () => { active = false }
   }, [token, validToken])
 
-  return <AuthLayout title={state === 'success' ? 'Email verified' : state === 'checking' ? 'Verifying your email' : 'Verify your email'} description={state === 'success' ? 'You’re all set. Your email address has been confirmed.' : 'Confirm your email address to complete your account setup.'} eyebrow="EMAIL VERIFICATION">
+  return <AuthConsole scope="INTRIQO / VERIFY" phase={state === 'checking' ? 'verifying' : state === 'error' ? 'denied' : 'idle'} title={state === 'success' ? 'Email verified' : state === 'checking' ? 'Verifying your email' : 'Verify your email'} description={state === 'success' ? 'You’re all set. Your email address has been confirmed.' : 'Confirm your email address to complete your account setup.'}>
     <div className="auth-state">
       {state === 'checking' && <div className="auth-progress" role="status"><span className="loading-spinner" /> Checking your verification link…</div>}
       {state === 'success' && <><AuthMessage>Your email has been verified successfully. Sign in to open your workspace.</AuthMessage><Link className="button button-primary auth-submit" to="/login">Continue to sign in <Icon name="arrow-right" size={16} /></Link></>}
@@ -367,7 +299,7 @@ function VerifyEmailResult({ token }: { token: string }) {
     </div>
     {(state === 'error' || state === 'empty') && <ResendVerification />}
     {state !== 'success' && <p className="auth-help">Already verified? <Link className="inline-link" to="/login">Sign in</Link> <span className="auth-link-separator">·</span> <Link className="inline-link" to="/signup">Create an account</Link></p>}
-  </AuthLayout>
+  </AuthConsole>
 }
 
 export function ForgotPasswordPage() {
@@ -391,14 +323,14 @@ export function ForgotPasswordPage() {
       setSubmitting(false)
     }
   }
-  return <AuthLayout title={sent ? 'Check your inbox' : 'Forgot your password?'} description={sent ? 'Follow the link in your email to choose a new password.' : 'Enter the email address associated with your Intriqo account.'} eyebrow="ACCOUNT RECOVERY" asideTitle="Get back to your workspace.">
+  return <AuthConsole scope="INTRIQO / RECOVERY" phase={error ? 'denied' : submitting ? 'verifying' : 'idle'} title={sent ? 'Check your inbox' : 'Forgot your password?'} description={sent ? 'Follow the link in your email to choose a new password.' : 'Enter the email address associated with your Intriqo account.'}>
     {sent ? <div className="auth-state"><AuthMessage>{FORGOT_PASSWORD_CONFIRMATION}</AuthMessage><p className="auth-detail">Reset links expire and can only be used once. Use the newest email if you requested more than one.</p><Button type="button" variant="secondary" onClick={() => setSent(false)}>Try another email address</Button></div> : <form className="auth-form" onSubmit={submit} noValidate aria-busy={submitting}>
       <label className="field-label" htmlFor="recovery-email">Email address<input id="recovery-email" name="email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" disabled={submitting} required /></label>
       {error && <AuthMessage error>{error}</AuthMessage>}
       <Button type="submit" disabled={submitting} className="auth-submit">{submitting ? 'Sending reset link…' : 'Send reset link'}<Icon name="arrow-right" size={16} /></Button>
     </form>}
     <p className="auth-help"><Link className="inline-link" to="/login"><Icon name="chevron-left" size={14} /> Back to sign in</Link> <span className="auth-link-separator">·</span> <Link className="inline-link" to="/signup">Create an account</Link></p>
-  </AuthLayout>
+  </AuthConsole>
 }
 
 export function ResetPasswordPage() {
@@ -440,7 +372,7 @@ function ResetPasswordForm({ token }: { token: string }) {
       setSubmitting(false)
     }
   }
-  return <AuthLayout title={complete ? 'Password updated' : 'Choose a new password'} description={complete ? 'Your new password is ready to use.' : 'Use a unique password that you haven’t used elsewhere.'} eyebrow="ACCOUNT RECOVERY" asideTitle="A fresh start. A secure account.">
+  return <AuthConsole scope="INTRIQO / RECOVERY" phase={error ? 'denied' : submitting ? 'verifying' : 'idle'} title={complete ? 'Password updated' : 'Choose a new password'} description={complete ? 'Your new password is ready to use.' : 'Use a unique password that you haven’t used elsewhere.'}>
      {complete ? <div className="auth-state"><AuthMessage>Password updated successfully. Sign in with your new password to continue.</AuthMessage><Link className="button button-primary auth-submit" to="/login">Continue to sign in <Icon name="arrow-right" size={16} /></Link></div>
       : !validToken || expired ? <div className="auth-state"><AuthMessage error>{error || 'This reset link is missing or incomplete. Open the full link from your email, or request a new one.'}</AuthMessage><Link className="button button-primary auth-submit" to="/forgot-password">Request a new reset link <Icon name="arrow-right" size={16} /></Link></div>
         : <form className="auth-form" onSubmit={submit} noValidate aria-busy={submitting}>
@@ -449,7 +381,7 @@ function ResetPasswordForm({ token }: { token: string }) {
           <Button type="submit" disabled={submitting} className="auth-submit">{submitting ? 'Updating password…' : 'Reset password'}<Icon name="arrow-right" size={16} /></Button>
         </form>}
     {!complete && <p className="auth-help"><Link className="inline-link" to="/login"><Icon name="chevron-left" size={14} /> Back to sign in</Link> <span className="auth-link-separator">·</span> <Link className="inline-link" to="/forgot-password">Request another link</Link></p>}
-  </AuthLayout>
+  </AuthConsole>
 }
 
 interface DashboardSnapshot {
