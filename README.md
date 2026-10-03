@@ -29,12 +29,15 @@
 
 ## What is Intriqo?
 
-Intriqo is an **autonomous multi-agent Security Operations Center (SOC)**. It detects network threats in real time using a high-performance C++ IDS engine, autonomously investigates them using specialized AI agents, enforces every proposed response through a deterministic policy boundary, and surfaces everything to a live React dashboard — all without requiring a human to manually drive each step.
+Intriqo is an open-source network security monitoring and autonomous SOC platform under development. Its implemented C++ IDS runtime passively captures authorized Linux interface traffic, parses IPv4, tracks flows, and emits deterministic port-scan `SecurityEvent` JSON to the FastAPI/PostgreSQL control plane. Additional detectors, agents and response capabilities are future work; the complete autonomous vision is not implemented.
+
+The diagram below describes the target platform flow; it is not a claim that
+every autonomous-agent/response stage is implemented.
 
 ```
 Network Traffic
       ↓
-C++ IDS Engine          ← line-rate packet capture, flow tracking, detection
+C++ IDS Engine          ← passive capture, parsing, flow tracking, detection
       ↓  SecurityEvent JSON
 Python Control Plane    ← FastAPI, incidents, policy enforcement, persistence
       ↓  AgentTask
@@ -45,7 +48,7 @@ Controlled Action       ← ALLOW / DENY / HUMAN_APPROVAL
 React SOC Dashboard     ← live feed, approvals, audit, agent activity
 ```
 
-> **Status: 🚧 Architecture Phase** — Engine interfaces and agent foundation are complete and tested. Subsystem implementations are in progress. See [Current Status](#current-status).
+> **Status:** A runnable IDS runtime and Linux live-capture vertical slice are implemented and tested. Full autonomous SOC functionality remains incomplete. See [Current Status](#current-status) and [IDS runtime documentation](docs/engine/ids-engine.md).
 
 ---
 
@@ -125,7 +128,7 @@ intriqo/
 ├── contracts/        JSON Schema contracts (5 cross-boundary schemas)
 ├── ml/               Anomaly models        (training, evaluation, experiments)
 ├── security-lab/     Attack scenarios      (Docker, PCAP tooling, fixtures)
-├── infrastructure/   Services              (PostgreSQL, Redis, Prometheus, Grafana)
+├── infrastructure/   PostgreSQL and reserved future service directories
 ├── tests/            Cross-system tests    (e2e, integration, performance, security)
 ├── benchmarks/       Performance suite     (engine, detection, agents, end-to-end)
 ├── scripts/          Developer helpers     (dev, build, lab, benchmark)
@@ -170,16 +173,60 @@ make test-all
 
 ## Current Status
 
+### Run the IDS
+
+Requires C++20 and CMake ≥ 3.24; live capture additionally needs Linux, libpcap
+development headers (`libpcap-dev` on Debian/Ubuntu), and authorized capture
+privileges. Offline modes require neither libpcap nor a physical interface.
+
+```bash
+cmake -S . -B build/runtime-release -DCMAKE_BUILD_TYPE=Release -DINTRIQO_BUILD_TESTS=ON
+cmake --build build/runtime-release --parallel
+ctest --test-dir build/runtime-release --output-on-failure
+
+build/runtime-release/engine/intriqo-engine --help
+build/runtime-release/engine/intriqo-engine --synthetic --output events.jsonl
+build/runtime-release/engine/intriqo-engine --pcap authorized-input.pcap --output events.jsonl
+# Run only with approved privileges and an interface you are authorized to observe:
+build/runtime-release/engine/intriqo-engine --interface eth0 --filter "tcp" --no-promiscuous
+
+# Token comes from the existing authentication/service-identity API; never a CLI argument.
+export INTRIQO_CONTROL_PLANE_URL=http://127.0.0.1:8000
+export INTRIQO_CONTROL_PLANE_TOKEN="$IDS_ENGINE_JWT"
+build/runtime-release/engine/intriqo-engine --interface eth0 --filter "tcp" --sink http
+
+# Reproducible Release benchmark (full raw-packet runtime, not pre-parsed input):
+python3 scripts/benchmark/runtime_benchmark.py --build build/runtime-release
+```
+
+`--sink file|http`, `--output`, `--snaplen`, `--no-promiscuous`,
+`--portscan-window`, `--portscan-unique-port-threshold`,
+`--portscan-minimum-attempts`, and `--log-level error|info|debug` configure the
+runtime. `INTRIQO_CONTROL_PLANE_ENDPOINT` defaults to `/api/v1/events`.
+The existing HTTP sink is plain HTTP only: use it on a trusted local/isolated
+network, not across an untrusted network with bearer credentials.
+
+Startup reports the mode/source/registry/sink/configuration and capture
+readiness; SIGINT/SIGTERM stop capture, flush flows/sink, and print measured
+packet/flow/detection/delivery/failure/duration counters. Failed capture or
+delivery returns nonzero; no per-packet logs or credentials are printed.
+
+**Visibility is local to the configured traffic source.** Network-wide
+monitoring requires an authorized SPAN/mirror port, TAP, or equivalent network
+configuration. Promiscuous mode alone does not supply network-wide visibility.
+See [limitations and configuration](docs/engine/ids-engine.md) and
+[actual verification/benchmark results](docs/engine/runtime-validation.md).
+
 | Layer | Status | Details |
 |---|---|---|
-| **C++ Engine** | 🟢 Phase 2 complete | IPv4 parser, flows, port-scan detection, SecurityEvent JSON, PCAP replay, HTTP sink, 19 tests |
+| **C++ Engine** | 🟢 Runtime/live slice implemented | Concrete Engine, Linux libpcap, synthetic/classic PCAP, detector registry, file/HTTP sinks, graceful signals, counters; 43 CTest entries including all original 19 tests |
 | **Python Agents** | 🟢 Foundation complete | `intriqo_agents` package, 79 tests passing |
 | **Control Plane** | 🟢 Phase 1 complete | FastAPI, PostgreSQL persistence, JWT/RBAC, events, incidents, tasks, findings, audit logs |
 | **Frontend** | 🟡 Structure complete | Vite + React 18, SOC feature dirs, routing shell |
 | **Contracts** | 🟢 Complete | 5 JSON Schema files across all boundaries |
 | **CI / Tooling** | 🟢 Complete | cpp, python, frontend, security workflows |
 
-**Not yet implemented:** autonomous agent execution · correlation/threat-intel/response agents · LLM integration · frontend features · live packet capture · Kafka (deferred).
+**Future/deferred in this IDS phase:** additional detectors · missing agents · LLM integration · response/blocking · packet injection · Kafka/Redis/Kubernetes · streaming UI · Prometheus. Existing agent/control-plane/frontend responsibilities are unchanged.
 
 ---
 
