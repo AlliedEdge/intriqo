@@ -61,6 +61,9 @@ endif()
 # Subdirectories
 # =============================================================================
 add_subdirectory(engine)
+if(INTRIQO_BUILD_TESTS)
+    enable_testing()
+endif()
 
 # =============================================================================
 # Summary

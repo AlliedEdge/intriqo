@@ -94,7 +94,8 @@ engine-test: engine-build
 
 engine-bench: engine-build
 	@echo "$(GREEN)→ Running engine benchmarks$(RESET)"
-	$(ENGINE_BUILD_DIR)/benchmarks/intriqo_benchmarks
+	$(ENGINE_BUILD_DIR)/intriqo_engine_benchmark
+	$(ENGINE_BUILD_DIR)/intriqo-runtime-benchmark --synthetic
 
 engine-clean:
 	@echo "$(GREEN)→ Cleaning engine build$(RESET)"
