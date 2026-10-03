@@ -10,14 +10,21 @@ class SecurityEventSink {
 public:
     virtual ~SecurityEventSink() = default;
     virtual bool submit(const events::SecurityEvent& event) noexcept = 0;
+    virtual bool prepare() noexcept { return true; }
+    virtual bool flush() noexcept { return true; }
+    [[nodiscard]] virtual std::string error() const { return {}; }
 };
 
 class FileEventSink final : public SecurityEventSink {
 public:
     explicit FileEventSink(std::string path);
+    bool prepare() noexcept override;
     bool submit(const events::SecurityEvent&) noexcept override;
+    [[nodiscard]] std::string error() const override;
 private:
     std::string path_;
+    mutable std::mutex mutex_;
+    std::string error_;
 };
 
 class HttpEventSink final : public SecurityEventSink {
@@ -32,8 +39,10 @@ public:
     bool submit(const events::SecurityEvent&) noexcept override;
     [[nodiscard]] long last_status_code() const noexcept;
     [[nodiscard]] std::string last_error() const;
+    [[nodiscard]] std::string error() const override;
 private:
     Config config_;
+    std::mutex submit_mutex_;
     mutable std::mutex mutex_;
     long last_status_code_{0};
     std::string last_error_;

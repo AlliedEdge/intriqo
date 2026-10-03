@@ -12,8 +12,10 @@ namespace intriqo::packet {
 /// Parsers and detectors receive a PacketView and must not outlive it.
 struct PacketView {
     TimePoint              timestamp;
-    std::span<const std::byte> raw_bytes;   ///< Full packet payload
+    std::span<const std::byte> raw_bytes;   ///< Captured bytes; may be truncated or link-normalized
     std::size_t            link_layer_type; ///< e.g. DLT_EN10MB = 1
+    std::size_t            wire_length{0};  ///< Original packet length; zero means unknown
+    std::size_t            captured_length{0}; ///< Original caplen before normalization; zero uses raw_bytes.size()
 };
 
 /// Parsed L3/L4 packet header — produced by the packet parser.

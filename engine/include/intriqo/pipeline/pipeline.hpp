@@ -8,6 +8,13 @@
 
 namespace intriqo::pipeline {
 
+struct PipelineStatistics {
+    std::uint64_t flows_created{0};
+    std::uint64_t flows_expired{0};
+    std::uint64_t flows_flushed{0};
+    std::uint64_t flows_active{0};
+};
+
 /// Callback invoked for every SecurityEvent the pipeline produces.
 using EventCallback = std::function<void(events::SecurityEvent)>;
 
@@ -32,6 +39,13 @@ public:
 
     /// Return currently active flow count (for metrics).
     [[nodiscard]] virtual std::size_t active_flow_count() const noexcept = 0;
+
+    /// Lifecycle counters; the default preserves existing pipeline implementations.
+    [[nodiscard]] virtual PipelineStatistics statistics() const noexcept {
+        PipelineStatistics result;
+        result.flows_active = active_flow_count();
+        return result;
+    }
 };
 
 } // namespace intriqo::pipeline
