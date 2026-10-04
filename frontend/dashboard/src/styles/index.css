@@ -1265,3 +1265,568 @@ select { padding-right: 28px; }
   .final-cta-actions { justify-content: center; }
   .final-cta-globe-wrap { width: 260px; height: 260px; margin: 0 auto; }
 }
+
+
+/* ==========================================================================
+   Light Theme — LinkedIn-inspired warm slate palette
+   Applied via .light-theme on <html>
+   ========================================================================== */
+
+.light-theme {
+  color-scheme: light;
+
+  /* Backgrounds — warm off-white, never pure white */
+  --bg:               #f3f2ef;
+  --bg-soft:          #e9e8e4;
+  --surface:          #ffffff;
+  --surface-elevated: #f8f7f4;
+  --surface-soft:     #f1f0ed;
+  --surface-highlight:#eae9e6;
+
+  /* Borders */
+  --border:           #dbd9d4;
+  --border-strong:    #c5c3be;
+
+  /* Text */
+  --text-primary:     #1a1a1a;
+  --text-secondary:   #38434f;
+  --text-muted:       #74829a;
+
+  /* Brand accent — slightly deeper cyan for contrast on light */
+  --primary:          #0a8fa8;
+  --primary-bright:   #057a94;
+  --primary-dim:      rgba(10, 143, 168, 0.10);
+
+  /* Status colours adjusted for light backgrounds */
+  --success:          #0a8f6a;
+  --warning:          #b45309;
+  --danger:           #dc2626;
+  --info:             #0a8fa8;
+
+  --secondary-accent: #d4d2cd;
+  --shadow:           0 4px 24px rgba(0, 0, 0, 0.10), 0 1px 4px rgba(0, 0, 0, 0.07);
+}
+
+/* ---- Base overrides ---- */
+
+.light-theme html,
+.light-theme body {
+  background: var(--bg);
+  color: var(--text-primary);
+}
+
+/* ---- Sidebar ---- */
+
+.light-theme .sidebar {
+  background: #ffffff;
+  border-right-color: var(--border);
+}
+
+.light-theme .sidebar-header {
+  border-bottom-color: var(--border);
+}
+
+.light-theme .sidebar-context {
+  border-color: var(--border);
+  background: rgba(10, 143, 168, 0.05);
+}
+
+.light-theme .sidebar-link {
+  color: var(--text-muted);
+}
+
+.light-theme .sidebar-link:hover {
+  background: rgba(10, 143, 168, 0.07);
+  color: var(--text-primary);
+}
+
+.light-theme .sidebar-link.is-active {
+  background: rgba(10, 143, 168, 0.10);
+  color: var(--primary-bright);
+}
+
+.light-theme .sidebar-link.is-active::before {
+  background: var(--primary);
+}
+
+.light-theme .sidebar-user {
+  border-top-color: var(--border);
+}
+
+.light-theme .sidebar-user-copy strong { color: var(--text-secondary); }
+.light-theme .sidebar-user-copy small  { color: var(--text-muted); }
+
+.light-theme .sidebar-bottom {
+  border-top-color: var(--border);
+}
+
+.light-theme .nav-label { color: var(--text-muted); }
+
+.light-theme .context-mark {
+  background: var(--primary-dim);
+  color: var(--primary);
+}
+
+.light-theme .sidebar-context strong { color: var(--text-secondary); }
+.light-theme .sidebar-context small  { color: var(--text-muted); }
+
+.light-theme .avatar {
+  border-color: rgba(10, 143, 168, 0.35);
+  background: var(--primary-dim);
+  color: var(--primary-bright);
+}
+
+/* ---- Topbar ---- */
+
+.light-theme .topbar {
+  background: rgba(255, 255, 255, 0.92);
+  border-bottom-color: var(--border);
+}
+
+.light-theme .topbar-kicker,
+.light-theme .topbar-separator { color: var(--text-muted); }
+
+.light-theme .topbar-context strong { color: var(--text-primary); }
+.light-theme .topbar-status         { color: var(--text-muted); }
+.light-theme .topbar-user strong    { color: var(--text-secondary); }
+.light-theme .topbar-user small     { color: var(--text-muted); }
+
+/* ---- Cards ---- */
+
+.light-theme .card {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+/* ---- Buttons ---- */
+
+.light-theme .button-secondary {
+  border-color: var(--border-strong);
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+}
+
+.light-theme .button-secondary:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary-bright);
+}
+
+.light-theme .button-ghost {
+  color: var(--text-secondary);
+}
+
+.light-theme .button-ghost:hover:not(:disabled) {
+  background: var(--primary-dim);
+  color: var(--primary);
+}
+
+/* ---- Badges ---- */
+
+.light-theme .badge-neutral {
+  border-color: var(--border);
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+}
+
+.light-theme .badge-success {
+  border-color: rgba(10, 143, 106, 0.28);
+  background: rgba(10, 143, 106, 0.08);
+  color: #0a6b50;
+}
+
+.light-theme .badge-info {
+  border-color: rgba(10, 143, 168, 0.28);
+  background: rgba(10, 143, 168, 0.08);
+  color: var(--primary-bright);
+}
+
+.light-theme .badge-danger,
+.light-theme .badge-critical {
+  border-color: rgba(220, 38, 38, 0.25);
+  background: rgba(220, 38, 38, 0.07);
+  color: #b91c1c;
+}
+
+.light-theme .badge-high {
+  border-color: rgba(180, 83, 9, 0.25);
+  background: rgba(180, 83, 9, 0.07);
+  color: #92400e;
+}
+
+.light-theme .badge-medium {
+  border-color: rgba(180, 83, 9, 0.20);
+  background: rgba(180, 83, 9, 0.06);
+  color: #b45309;
+}
+
+.light-theme .badge-low {
+  border-color: rgba(10, 143, 168, 0.22);
+  background: rgba(10, 143, 168, 0.07);
+  color: var(--primary-bright);
+}
+
+/* ---- Data tables ---- */
+
+.light-theme .data-table th {
+  border-bottom-color: var(--border);
+  color: var(--text-muted);
+}
+
+.light-theme .data-table td {
+  border-bottom-color: var(--border);
+  color: var(--text-secondary);
+}
+
+.light-theme .data-table tbody tr:hover {
+  background: rgba(10, 143, 168, 0.04);
+}
+
+.light-theme .table-frame {
+  border-top-color: var(--border);
+}
+
+/* ---- Form inputs ---- */
+
+.light-theme input,
+.light-theme select {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.light-theme input::placeholder { color: #9ba8b8; }
+
+.light-theme input:focus,
+.light-theme select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(10, 143, 168, 0.12);
+}
+
+/* ---- Lists & timeline ---- */
+
+.light-theme .compact-list {
+  border-top-color: var(--border);
+}
+
+.light-theme .compact-list-row {
+  border-bottom-color: var(--border);
+}
+
+.light-theme .compact-list-row:hover {
+  background: rgba(10, 143, 168, 0.04);
+}
+
+.light-theme .compact-list-row strong { color: var(--text-secondary); }
+.light-theme .compact-list-row small  { color: var(--text-muted); }
+
+.light-theme .timeline-entry {
+  border-bottom-color: var(--border);
+}
+
+.light-theme .timeline-icon {
+  border-color: rgba(10, 143, 168, 0.22);
+  background: var(--primary-dim);
+  color: var(--primary);
+}
+
+.light-theme .timeline-entry strong { color: var(--text-secondary); }
+.light-theme .timeline-entry > div > span,
+.light-theme .timeline-entry time   { color: var(--text-muted); }
+
+/* ---- Pagination ---- */
+
+.light-theme .pagination {
+  border-top-color: var(--border);
+  color: var(--text-muted);
+}
+
+.light-theme .page-number {
+  border-color: var(--border-strong);
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+}
+
+/* ---- Key-value & detail grids ---- */
+
+.light-theme .key-value {
+  border-right-color: var(--border);
+  border-bottom-color: var(--border);
+}
+
+.light-theme .key-value-grid,
+.light-theme .detail-properties { border-top-color: var(--border); }
+
+.light-theme .key-value dt { color: var(--text-muted); }
+.light-theme .key-value dd { color: var(--text-secondary); }
+
+/* ---- Section heading ---- */
+
+.light-theme .section-heading h2   { color: var(--text-primary); }
+.light-theme .section-heading p    { color: var(--text-muted); }
+
+/* ---- Page header ---- */
+
+.light-theme .page-header h1        { color: var(--text-primary); }
+.light-theme .page-description      { color: var(--text-secondary); }
+
+/* ---- Metric cards ---- */
+
+.light-theme .metric-card strong    { color: var(--text-primary); }
+.light-theme .metric-card > span:last-child { color: var(--text-muted); }
+.light-theme .metric-critical       { color: var(--danger); }
+.light-theme .metric-high           { color: #b45309; }
+.light-theme .metric-medium         { color: #92400e; }
+.light-theme .metric-low            { color: var(--primary); }
+
+/* ---- Dashboard meta ---- */
+
+.light-theme .dashboard-meta       { color: var(--text-muted); }
+.light-theme .dashboard-meta span:first-child { color: var(--success); }
+
+/* ---- Panel links ---- */
+
+.light-theme .panel-link,
+.light-theme .table-link,
+.light-theme .inline-link {
+  color: var(--primary);
+}
+
+.light-theme .panel-link:hover,
+.light-theme .table-link:hover,
+.light-theme .inline-link:hover {
+  color: var(--text-primary);
+}
+
+/* ---- Empty / error states ---- */
+
+.light-theme .empty-icon {
+  border-color: var(--border);
+  background: var(--surface-elevated);
+  color: var(--primary);
+}
+
+.light-theme .empty-state h3 { color: var(--text-primary); }
+.light-theme .empty-state p  { color: var(--text-muted); }
+
+.light-theme .error-state {
+  border-color: rgba(220, 38, 38, 0.20);
+  background: rgba(220, 38, 38, 0.04);
+}
+
+/* ---- Skeleton loader ---- */
+
+.light-theme .skeleton-line {
+  background: linear-gradient(90deg, var(--surface-elevated), var(--surface-highlight), var(--surface-elevated));
+  background-size: 200% 100%;
+}
+
+/* ---- Agent / settings ---- */
+
+.light-theme .agent-hero {
+  border-color: rgba(10, 143, 168, 0.25);
+  background: linear-gradient(90deg, rgba(10, 143, 168, 0.07), rgba(10, 143, 168, 0.02));
+}
+
+.light-theme .agent-hero-icon {
+  border-color: rgba(10, 143, 168, 0.30);
+  background: var(--primary-dim);
+  color: var(--primary);
+}
+
+.light-theme .agent-hero h2          { color: var(--text-primary); }
+.light-theme .agent-hero p           { color: var(--text-secondary); }
+
+.light-theme .agent-capability {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.light-theme .agent-capability h3    { color: var(--text-primary); }
+.light-theme .agent-capability p     { color: var(--text-muted); }
+
+.light-theme .workflow-count strong  { color: var(--text-primary); }
+.light-theme .workflow-count > span:last-child { color: var(--text-muted); }
+.light-theme .workflow-count-icon {
+  border-color: rgba(10, 143, 168, 0.22);
+  background: var(--primary-dim);
+  color: var(--primary);
+}
+
+/* ---- Finding list ---- */
+
+.light-theme .finding-list li       { color: var(--text-secondary); border-bottom-color: var(--border); }
+.light-theme .finding-bullet        { background: rgba(10, 143, 106, 0.10); color: var(--success); }
+
+/* ---- Related resources ---- */
+
+.light-theme .related-resource-list { border-top-color: var(--border); }
+.light-theme .related-resource      { border-bottom-color: var(--border); }
+.light-theme .related-resource strong { color: var(--text-secondary); }
+.light-theme .related-resource small  { color: var(--text-muted); }
+.light-theme .related-resource:hover strong { color: var(--primary); }
+
+/* ---- JSON / code blocks ---- */
+
+.light-theme .json-block,
+.light-theme .raw-json pre,
+.light-theme .evidence-item pre {
+  background: var(--bg-soft);
+  border-top-color: var(--border);
+  color: #1a5c72;
+}
+
+.light-theme .raw-json summary { color: var(--text-secondary); }
+
+/* ---- Auth surfaces ---- */
+
+.light-theme .form-error {
+  border-color: rgba(220, 38, 38, 0.22);
+  background: rgba(220, 38, 38, 0.05);
+  color: #b91c1c;
+}
+
+.light-theme .form-success {
+  border-color: rgba(10, 143, 106, 0.25);
+  background: rgba(10, 143, 106, 0.06);
+  color: #0a6b50;
+}
+
+/* ---- Selection ---- */
+
+.light-theme ::selection {
+  background: rgba(10, 143, 168, 0.20);
+  color: var(--text-primary);
+}
+
+/* ---- Route loading ---- */
+
+.light-theme .route-loading {
+  background: var(--bg);
+  color: var(--text-muted);
+}
+
+.light-theme .loading-spinner {
+  border-color: var(--border-strong);
+  border-top-color: var(--primary);
+}
+
+/* ==========================================================================
+   Theme Toggle Button
+   Neumorphic sun/moon pill — matches the provided design exactly
+   ========================================================================== */
+
+.theme-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 68px;
+  height: 34px;
+  padding: 5px;
+  border: 2px solid transparent;
+  border-radius: 30px;
+  background: none;
+  cursor: pointer;
+  outline: none;
+  flex-shrink: 0;
+  overflow: hidden;
+
+  /* dark mode neumorphic depth */
+  background: #0c1822;
+  border-color: #1c303d;
+  box-shadow:
+    -2px -2px 4px rgba(30, 60, 80, 0.5),
+    2px 2px 5px rgba(0, 0, 0, 0.5),
+    inset 1px 1px 4px rgba(0, 0, 0, 0.6),
+    inset 1px 1px 16px rgba(0, 0, 0, 0.4);
+
+  transition: background 300ms ease, border-color 300ms ease, box-shadow 300ms ease;
+}
+
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Light variant */
+.theme-toggle-light {
+  background: #e8ddd5;
+  border-color: #cac2bc;
+  box-shadow:
+    -2px -2px 4px #ffffff,
+    2px 2px 5px #cac2bc,
+    inset 1px 1px 4px #cac2bc,
+    inset 1px 1px 16px #cac2bc;
+}
+
+/* Sliding knob — indicates CURRENT theme: left = light (over sun), right = dark (over moon) */
+.theme-toggle-switch {
+  position: absolute;
+  left: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #0c1822;
+  box-shadow:
+    0 0 0 2px #e53e3e,
+    inset 1px 1px 2px rgba(30, 60, 80, 0.5),
+    3px 4px 6px rgba(0, 0, 0, 0.55);
+  transition: transform 300ms cubic-bezier(0.34, 1.42, 0.64, 1), background 300ms ease, box-shadow 300ms ease;
+  z-index: 2;
+  /* dark mode: knob on RIGHT — over the moon icon */
+  transform: translateX(34px);
+}
+
+.theme-toggle-light .theme-toggle-switch {
+  /* light mode: knob on LEFT — over the sun icon */
+  transform: translateX(0);
+  background: #e8ddd5;
+  box-shadow:
+    0 0 0 2px #e53e3e,
+    inset 1px 1px 2px #ffffff,
+    3px 4px 6px #cac2bc;
+}
+
+/* Icons */
+.theme-toggle-sun,
+.theme-toggle-moon {
+  position: relative;
+  z-index: 3;
+  flex-shrink: 0;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  padding: 2px;
+  pointer-events: none;
+}
+
+/* Sun — bright in light (knob covers it on left = visible through knob colour), full when light active */
+/* In dark mode the sun is visible on LEFT but we're in dark — keep it subtle */
+.theme-toggle-sun {
+  color: #6ab0c0;
+  opacity: 0.55;
+  transition: color 300ms ease, opacity 300ms ease;
+}
+.theme-toggle-light .theme-toggle-sun {
+  /* light mode: knob is over sun — but sun colour bleeds through warm knob */
+  color: #d4845a;
+  opacity: 1;
+}
+
+/* Moon — bright in dark (knob is over it, but moon colour shows through dark knob) */
+.theme-toggle-moon {
+  color: #ffffff;
+  opacity: 1;
+  transition: color 300ms ease, opacity 300ms ease;
+}
+.theme-toggle-light .theme-toggle-moon {
+  /* light mode: moon on right, dimmed — not the active theme */
+  color: #b8a8a0;
+  opacity: 0.42;
+}
+
+/* Hover shimmer */
+.theme-toggle:hover .theme-toggle-switch {
+  filter: brightness(1.08);
+}
