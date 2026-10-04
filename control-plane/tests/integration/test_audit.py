@@ -89,3 +89,21 @@ async def test_list_audit_logs_filters(client, db, analyst_headers):
     body = resp.json()
     assert body["total"] == 1
     assert body["items"][0]["id"] == "audit-1"
+
+
+@pytest.mark.asyncio
+async def test_agent_cannot_read_audit_logs(client, db, agent_headers):
+    """AGENT role must be denied access to the audit log (ADMIN/ANALYST only)."""
+    await _seed_logs(db)
+    resp = await client.get("/api/v1/audit", headers=agent_headers)
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "FORBIDDEN"
+
+
+@pytest.mark.asyncio
+async def test_admin_can_read_audit_logs(client, db, admin_headers):
+    """ADMIN must have full access to the audit log."""
+    await _seed_logs(db)
+    resp = await client.get("/api/v1/audit", headers=admin_headers)
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 3

@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from intriqo.auth.dependencies import AuthUser
+from intriqo.auth.dependencies import AnalystUser
 from intriqo.db.session import get_db
 from intriqo.repositories.audit_logs import AuditLogRepository
 from intriqo.schemas.audit import AuditLogResponse
@@ -32,7 +32,7 @@ def _to_response(log) -> AuditLogResponse:
 
 @router.get("", response_model=PaginatedResponse[AuditLogResponse])
 async def list_audit_logs(
-    user: AuthUser,
+    user: AnalystUser,
     db: AsyncSession = Depends(get_db),
     action: Annotated[str | None, Query()] = None,
     resource_type: Annotated[str | None, Query()] = None,
