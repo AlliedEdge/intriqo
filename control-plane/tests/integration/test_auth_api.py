@@ -115,3 +115,123 @@ async def test_analyst_cannot_ingest_events(client):
     )
     # ANALYST role is included in require_agent so this should succeed
     assert resp.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_registration_always_creates_analyst(client):
+    """Default registration must always produce an ANALYST account."""
+    user = unique_user()
+    resp = await client.post("/api/v1/auth/register", json=user)
+    assert resp.status_code == 201
+    assert resp.json()["role"] == "ANALYST"
+
+
+@pytest.mark.asyncio
+async def test_registration_ignores_role_admin_in_body(client):
+    """Supplying role=ADMIN in the request body must still produce ANALYST."""
+    user = unique_user()
+    user["role"] = "ADMIN"
+    resp = await client.post("/api/v1/auth/register", json=user)
+    assert resp.status_code == 201
+    assert resp.json()["role"] == "ANALYST"
+
+
+@pytest.mark.asyncio
+async def test_registration_ignores_role_agent_in_body(client):
+    """Supplying role=AGENT in the request body must still produce ANALYST."""
+    user = unique_user()
+    user["role"] = "AGENT"
+    resp = await client.post("/api/v1/auth/register", json=user)
+    assert resp.status_code == 201
+    assert resp.json()["role"] == "ANALYST"
+
+
+@pytest.mark.asyncio
+async def test_me_returns_correct_role_for_analyst(client):
+    """JWT role claim must match the ANALYST role assigned at registration."""
+    user = unique_user()
+    await client.post("/api/v1/auth/register", json=user)
+    login_resp = await client.post(
+        "/api/v1/auth/login",
+        json={"username": user["username"], "password": user["password"]},
+    )
+    token = login_resp.json()["access_token"]
+    me_resp = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me_resp.status_code == 200
+    body = me_resp.json()
+    assert body["role"] == "ANALYST"
+    assert body["username"] == user["username"]
+
+
+@pytest.mark.asyncio
+async def test_me_returns_correct_role_from_jwt_fixture(client, admin_headers, agent_headers, analyst_headers):
+    """Pre-baked JWT fixtures must reflect their intended roles."""
+    admin_me = await client.get("/api/v1/auth/me", headers=admin_headers)
+    assert admin_me.status_code == 200
+    assert admin_me.json()["role"] == "ADMIN"
+
+    analyst_me = await client.get("/api/v1/auth/me", headers=analyst_headers)
+    assert analyst_me.status_code == 200
+    assert analyst_me.json()["role"] == "ANALYST"
+
+    agent_me = await client.get("/api/v1/auth/me", headers=agent_headers)
+    assert agent_me.status_code == 200
+    assert agent_me.json()["role"] == "AGENT"
+
+
+@pytest.mark.asyncio
+async def test_expired_token_is_rejected(client):
+    """An expired JWT must return 401 on any protected endpoint."""
+    import datetime as _dt
+    from jose import jwt
+    from intriqo.config import get_settings
+
+    settings = get_settings()
+    past = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(seconds=1)
+    expired = jwt.encode(
+        {"sub": "user", "role": "ANALYST", "exp": past, "iat": past},
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+    resp = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {expired}"})
+    assert resp.status_code == 401
+    assert resp.json()["error"]["code"] == "INVALID_TOKEN"
+
+
+@pytest.mark.asyncio
+async def test_invalid_token_is_rejected(client):
+    """A garbage Bearer token must return 401."""
+    resp = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": "Bearer not.a.real.jwt"}
+    )
+    assert resp.status_code == 401
+    assert resp.json()["error"]["code"] == "INVALID_TOKEN"
+
+
+@pytest.mark.asyncio
+async def test_missing_token_is_rejected(client):
+    """Requests without a Bearer token must return 401."""
+    resp = await client.get("/api/v1/auth/me")
+    assert resp.status_code == 401
+    assert resp.json()["error"]["code"] == "MISSING_TOKEN"
+
+
+@pytest.mark.asyncio
+async def test_login_invalid_credentials_fail_safely(client):
+    """Invalid credentials must return 401 without revealing account existence."""
+    user = unique_user()
+    await client.post("/api/v1/auth/register", json=user)
+
+    wrong_pass = await client.post(
+        "/api/v1/auth/login",
+        json={"username": user["username"], "password": "WrongPassword999"},
+    )
+    nonexistent = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "nobody_" + uuid.uuid4().hex, "password": "anything"},
+    )
+    # Both return 401 with the same error code — no enumeration oracle
+    assert wrong_pass.status_code == 401
+    assert nonexistent.status_code == 401
+    assert wrong_pass.json()["error"]["code"] == "INVALID_CREDENTIALS"
+    assert nonexistent.json()["error"]["code"] == "INVALID_CREDENTIALS"

@@ -16,6 +16,21 @@ Isolation strategy:
 from __future__ import annotations
 
 import os
+
+# Force verification off for all tests regardless of what .env contains.
+# A real Resend key in .env would otherwise make _verification_required()
+# return True and break every register→login integration test.
+os.environ.setdefault("APP_ENV", "test")
+os.environ["REQUIRE_EMAIL_VERIFICATION"] = "false"
+
+# Bust the lru_cache so the patched env vars take effect before any import
+# of intriqo.config happens during test collection.
+import importlib
+import sys
+if "intriqo.config" in sys.modules:
+    from intriqo.config import get_settings
+    get_settings.cache_clear()
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -39,7 +54,10 @@ _ENGINE_KWARGS = {
     "connect_args": {"ssl": False},
 }
 
-# DELETE order respects FK constraints (children before parents)
+# DELETE order respects FK constraints (children before parents).
+# auth_tokens is cascaded on user delete but listed explicitly so the
+# scalar_one() query in test_account_recovery_api never sees leftover rows
+# from a prior test that registered a user in a different session.
 _DELETE_TABLES = [
     "audit_logs",
     "findings",
@@ -47,6 +65,7 @@ _DELETE_TABLES = [
     "incident_events",
     "incidents",
     "security_events",
+    "auth_tokens",
     "users",
 ]
 

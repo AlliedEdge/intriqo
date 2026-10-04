@@ -47,10 +47,20 @@ async def test_registration_defaults_analyst_and_verification_is_single_use(
     assert registered.json()["role"] == "ANALYST"
     assert registered.json()["is_email_verified"] is False
     assert len(sent) == 1
+    user_id = registered.json()["id"]
 
     raw_token = _token_from_email(sent[0]["html_body"])
+    # Scope to this user AND only the active (unconsumed) token so that the
+    # resend-verification call below — which stamps the first token used_at and
+    # inserts a second row — does not cause scalar_one() to see multiple rows.
     stored = (
-        await db.execute(select(AuthToken).where(AuthToken.token_type == AuthTokenType.EMAIL_VERIFICATION))
+        await db.execute(
+            select(AuthToken).where(
+                AuthToken.user_id == user_id,
+                AuthToken.token_type == AuthTokenType.EMAIL_VERIFICATION,
+                AuthToken.used_at.is_(None),
+            )
+        )
     ).scalar_one()
     assert stored.token_hash != raw_token
     assert len(stored.token_hash) == 64
@@ -71,6 +81,8 @@ async def test_registration_defaults_analyst_and_verification_is_single_use(
     assert verified.status_code == 200, verified.text
     assert verified.json()["message"] == "Email verified successfully."
 
+    # Fetch the freshly-consumed token (the one issued by resend-verification).
+    # used_at is now set so we query without the used_at IS NULL predicate here.
     stored_after = await db.get(AuthToken, stored.id)
     assert stored_after is not None
     assert stored_after.used_at is not None
@@ -138,9 +150,16 @@ async def test_expired_verification_token_is_rejected(client, db, monkeypatch):
     payload = _user_payload()
     response = await client.post("/api/v1/auth/register", json=payload)
     assert response.status_code == 201
+    user_id = response.json()["id"]
     raw_token = _token_from_email(sent[0]["html_body"])
     stored = (
-        await db.execute(select(AuthToken).where(AuthToken.token_type == AuthTokenType.EMAIL_VERIFICATION))
+        await db.execute(
+            select(AuthToken).where(
+                AuthToken.user_id == user_id,
+                AuthToken.token_type == AuthTokenType.EMAIL_VERIFICATION,
+                AuthToken.used_at.is_(None),
+            )
+        )
     ).scalar_one()
     stored.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
     await db.flush()
@@ -212,12 +231,19 @@ async def test_expired_password_reset_token_is_rejected(client, db, monkeypatch)
     payload = _user_payload()
     registered = await client.post("/api/v1/auth/register", json=payload)
     assert registered.status_code == 201
+    user_id = registered.json()["id"]
     sent.clear()
     requested = await client.post("/api/v1/auth/forgot-password", json={"email": payload["email"]})
     assert requested.status_code == 202
     raw_token = _token_from_email(sent[0]["html_body"])
     stored = (
-        await db.execute(select(AuthToken).where(AuthToken.token_type == AuthTokenType.PASSWORD_RESET))
+        await db.execute(
+            select(AuthToken).where(
+                AuthToken.user_id == user_id,
+                AuthToken.token_type == AuthTokenType.PASSWORD_RESET,
+                AuthToken.used_at.is_(None),
+            )
+        )
     ).scalar_one()
     stored.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
     await db.flush()
