@@ -60,4 +60,17 @@ struct SecurityEvent {
                                                   std::uint16_t threshold,
                                                   TimePoint timestamp);
 
+[[nodiscard]] SecurityEvent make_syn_flood_event(const IPv4Address& source,
+                                                  const IPv4Address& destination,
+                                                  Severity severity,
+                                                  Port destination_port,
+                                                  std::uint64_t attempts,
+                                                  std::uint64_t syn_acks,
+                                                  std::uint64_t completed_handshakes,
+                                                  std::uint64_t incomplete_handshakes,
+                                                  double incomplete_ratio,
+                                                  double rate_per_second,
+                                                  double window_seconds,
+                                                  TimePoint timestamp);
+
 } // namespace intriqo::events

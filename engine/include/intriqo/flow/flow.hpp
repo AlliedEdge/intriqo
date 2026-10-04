@@ -37,6 +37,15 @@ struct NetworkFlow {
     std::uint32_t syn_count{0};
     std::uint32_t fin_count{0};
     std::uint32_t rst_count{0};
+    // Additive TCP handshake counters and metadata follow the original
+    // aggregate fields above so existing aggregate initialization remains
+    // source-compatible.
+    std::uint32_t initial_syn_count{0}; ///< SYN without ACK (connection attempts).
+    std::uint32_t syn_ack_count{0};
+    std::uint32_t ack_count{0}; ///< TCP ACKs without SYN.
+    bool tcp_handshake_started{false};
+    bool tcp_syn_ack_seen{false};
+    bool tcp_handshake_completed{false};
 
     /// Duration of the flow in seconds.
     [[nodiscard]] double duration_seconds() const noexcept;

@@ -21,6 +21,14 @@ struct DetectorStatistics {
     std::uint64_t expired_sources{0};
     std::uint64_t state_rejections{0};
     std::uint64_t errors{0};
+    // Optional detector-specific counters. Zero for detectors that do not
+    // observe TCP handshake evidence.
+    std::uint64_t syn_observations{0};
+    std::uint64_t syn_ack_observations{0};
+    std::uint64_t ack_completions{0};
+    std::uint64_t incomplete_handshakes{0}; ///< Current incomplete-handshake gauge.
+    std::uint64_t expired_observations{0};
+    std::uint64_t state_evictions{0};
 };
 
 /// Abstract base for all IDS detectors.

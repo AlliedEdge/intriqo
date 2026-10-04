@@ -1,6 +1,7 @@
 #include "intriqo/capture/capture.hpp"
 #include "intriqo/detection/detector_registry.hpp"
 #include "intriqo/detection/port_scan_detector.hpp"
+#include "intriqo/detection/syn_flood_detector.hpp"
 #include "intriqo/pipeline/pipeline_impl.hpp"
 #include "intriqo/runtime/engine_impl.hpp"
 #include "intriqo/transport/event_sink.hpp"
@@ -43,6 +44,8 @@ struct Options {
     capture::LiveCaptureConfig live;
     capture::SyntheticCaptureConfig synthetic;
     detection::PortScanConfig detector;
+    detection::SynFloodConfig syn_flood;
+    bool syn_flood_enabled{true};
     double flow_idle_timeout{60.0};
     std::size_t max_active_flows{100000};
     std::string sink{"file"};
@@ -77,6 +80,17 @@ Detection:
   --portscan-window SECONDS           Finite positive window (default 10)
   --portscan-unique-port-threshold N   Distinct ports required (1..65535; default 10)
   --portscan-minimum-attempts N        Positive minimum attempts (default 10)
+  --disable-syn-flood                  Disable the SYN flood detector
+  --synflood-window SECONDS            Observation window (default 10)
+  --synflood-minimum-observation SECONDS Minimum observation span (default 1)
+  --synflood-minimum-attempts N        Distinct initial SYN flows (default 100)
+  --synflood-minimum-rate RATE         Minimum initial SYN rate per second (default 50)
+  --synflood-incomplete-ratio RATIO    Minimum incomplete ratio 0..1 (default 0.90)
+  --synflood-minimum-incomplete N      Minimum incomplete handshakes (default 50)
+  --synflood-cooldown SECONDS          Alert cooldown (default 10)
+  --synflood-max-buckets N             Maximum source/target/service windows (default 4096)
+  --synflood-max-flows N               Maximum retained flow identities (default 100000)
+  --synflood-state-expiration SECONDS  Retained flow identity expiry (default 60)
   --flow-idle-timeout SECONDS           Flow idle expiry (default 60)
   --max-active-flows N                 Active flow bound (default 100000)
   --max-tracked-sources N              Portscan source bound (default 4096)
@@ -125,6 +139,23 @@ double positive_seconds(std::string_view text, std::string_view flag) {
     const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
     if (error != std::errc{} || end != text.data() + text.size() || !std::isfinite(value) || value <= 0.0)
         throw OptionError(std::string(flag) + " requires finite positive seconds");
+    return value;
+}
+
+double non_negative_value(std::string_view text, std::string_view flag) {
+    double value = 0.0;
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (error != std::errc{} || end != text.data() + text.size() || !std::isfinite(value) || value < 0.0)
+        throw OptionError(std::string(flag) + " requires a finite non-negative number");
+    return value;
+}
+
+double ratio(std::string_view text, std::string_view flag) {
+    double value = 0.0;
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (error != std::errc{} || end != text.data() + text.size() || !std::isfinite(value)
+        || value < 0.0 || value > 1.0)
+        throw OptionError(std::string(flag) + " requires a finite ratio in range 0..1");
     return value;
 }
 
@@ -210,6 +241,28 @@ Options parse_options(int argc, char** argv) {
             options.detector.unique_port_threshold = positive_integer(value(), flag, 65535);
         } else if (flag == "--portscan-minimum-attempts") {
             options.detector.minimum_attempts = positive_integer(value(), flag);
+        } else if (flag == "--disable-syn-flood") {
+            options.syn_flood_enabled = false;
+        } else if (flag == "--synflood-window") {
+            options.syn_flood.window_seconds = positive_seconds(value(), flag);
+        } else if (flag == "--synflood-minimum-observation") {
+            options.syn_flood.minimum_observation_seconds = positive_seconds(value(), flag);
+        } else if (flag == "--synflood-minimum-attempts") {
+            options.syn_flood.minimum_attempts = positive_integer(value(), flag);
+        } else if (flag == "--synflood-minimum-rate") {
+            options.syn_flood.minimum_rate_per_second = non_negative_value(value(), flag);
+        } else if (flag == "--synflood-incomplete-ratio") {
+            options.syn_flood.incomplete_ratio_threshold = ratio(value(), flag);
+        } else if (flag == "--synflood-minimum-incomplete") {
+            options.syn_flood.minimum_incomplete_handshakes = positive_integer(value(), flag);
+        } else if (flag == "--synflood-cooldown") {
+            options.syn_flood.cooldown_seconds = non_negative_value(value(), flag);
+        } else if (flag == "--synflood-max-buckets") {
+            options.syn_flood.max_tracked_buckets = positive_integer(value(), flag);
+        } else if (flag == "--synflood-max-flows") {
+            options.syn_flood.max_tracked_flows = positive_integer(value(), flag);
+        } else if (flag == "--synflood-state-expiration") {
+            options.syn_flood.state_expiration_seconds = positive_seconds(value(), flag);
         } else if (flag == "--sink") {
             options.sink = value();
             if (options.sink != "file" && options.sink != "http")
@@ -245,6 +298,10 @@ Options parse_options(int argc, char** argv) {
         throw OptionError("--output requires --sink file");
     if (options.url_set && options.sink != "http")
         throw OptionError("--control-plane-url requires --sink http");
+    if (options.syn_flood.minimum_observation_seconds > options.syn_flood.window_seconds)
+        throw OptionError("SYN flood minimum observation must not exceed its window");
+    if (options.syn_flood.state_expiration_seconds < options.syn_flood.window_seconds)
+        throw OptionError("SYN flood state expiration must be at least its window");
     return options;
 }
 
@@ -383,6 +440,17 @@ void startup(const Options& options, const std::vector<std::string>& names) {
               << " portscan_window_seconds=" << options.detector.window_seconds
               << " portscan_unique_port_threshold=" << options.detector.unique_port_threshold
               << " portscan_minimum_attempts=" << options.detector.minimum_attempts
+              << " syn_flood_enabled=" << (options.syn_flood_enabled ? "true" : "false")
+              << " synflood_window_seconds=" << options.syn_flood.window_seconds
+              << " synflood_minimum_observation_seconds=" << options.syn_flood.minimum_observation_seconds
+              << " synflood_minimum_attempts=" << options.syn_flood.minimum_attempts
+              << " synflood_minimum_rate=" << options.syn_flood.minimum_rate_per_second
+              << " synflood_incomplete_ratio=" << options.syn_flood.incomplete_ratio_threshold
+              << " synflood_minimum_incomplete=" << options.syn_flood.minimum_incomplete_handshakes
+              << " synflood_cooldown_seconds=" << options.syn_flood.cooldown_seconds
+              << " synflood_max_buckets=" << options.syn_flood.max_tracked_buckets
+              << " synflood_max_flows=" << options.syn_flood.max_tracked_flows
+              << " synflood_state_expiration_seconds=" << options.syn_flood.state_expiration_seconds
               << " flow_idle_timeout_seconds=" << options.flow_idle_timeout
               << " max_active_flows=" << options.max_active_flows
               << " max_tracked_sources=" << options.detector.max_tracked_sources
@@ -428,6 +496,8 @@ int run(const Options& options) {
 
     auto registry = std::make_unique<detection::DetectorRegistry>();
     registry->add(std::make_unique<detection::PortScanDetector>(options.detector));
+    if (options.syn_flood_enabled)
+        registry->add(std::make_unique<detection::SynFloodDetector>(options.syn_flood));
     const auto names = registry->names();
     auto pipeline = std::make_unique<pipeline::PipelineImpl>(std::move(registry), Duration{options.flow_idle_timeout}, options.max_active_flows);
     std::unique_ptr<transport::SecurityEventSink> sink;

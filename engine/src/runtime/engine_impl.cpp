@@ -52,7 +52,13 @@ void apply_pipeline_statistics(metrics::EngineMetrics& counters,
     counters.detector_peak_sources = detection.peak_sources;
     counters.detector_peak_observations = detection.peak_observations;
     counters.detector_expired_sources = detection.expired_sources;
+    counters.detector_expired_observations = detection.expired_observations;
     counters.detector_state_rejections = detection.state_rejections;
+    counters.detector_state_evictions = detection.state_evictions;
+    counters.detector_syn_observations = detection.syn_observations;
+    counters.detector_syn_ack_observations = detection.syn_ack_observations;
+    counters.detector_ack_completions = detection.ack_completions;
+    counters.detector_incomplete_handshakes = detection.incomplete_handshakes;
     counters.detector_errors = detection.errors;
 }
 

@@ -55,6 +55,12 @@ struct EngineMetrics {
     double processing_seconds{0.0};       ///< Packet callback time, including synchronous event delivery
     double event_sink_seconds{0.0};       ///< Actual sink submit/flush time; excludes queue-drain waiting
     double processing_packets_per_second{0.0};
+    std::uint64_t detector_expired_observations{0};
+    std::uint64_t detector_state_evictions{0};
+    std::uint64_t detector_syn_observations{0};
+    std::uint64_t detector_syn_ack_observations{0};
+    std::uint64_t detector_ack_completions{0};
+    std::uint64_t detector_incomplete_handshakes{0};
 
     /// Legacy delivered-plus-dropped fraction, retained for source compatibility.
     /// Not a capture/wire loss estimate: ps_recv, callbacks and interface counters

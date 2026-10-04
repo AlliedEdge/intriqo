@@ -71,8 +71,14 @@ DetectorStatistics DetectorRegistry::statistics() const noexcept {
         result.peak_sources += stats.peak_sources;
         result.peak_observations += stats.peak_observations;
         result.expired_sources += stats.expired_sources;
+        result.expired_observations += stats.expired_observations;
         result.state_rejections += stats.state_rejections;
+        result.state_evictions += stats.state_evictions;
         result.errors += stats.errors;
+        result.syn_observations += stats.syn_observations;
+        result.syn_ack_observations += stats.syn_ack_observations;
+        result.ack_completions += stats.ack_completions;
+        result.incomplete_handshakes += stats.incomplete_handshakes;
     }
     return result;
 }

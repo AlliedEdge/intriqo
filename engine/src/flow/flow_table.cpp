@@ -56,6 +56,13 @@ FlowUpdate FlowTable::update(const packet::ParsedPacket& packet) {
         flow.flow_id = next_id_;
         flow.key = direct;
         flow.first_seen = flow.last_seen = packet.timestamp;
+        constexpr std::uint8_t syn = 0x02;
+        constexpr std::uint8_t ack = 0x10;
+        constexpr std::uint8_t fin = 0x01;
+        constexpr std::uint8_t rst = 0x04;
+        flow.tcp_handshake_started = packet.is_tcp()
+            && (packet.tcp_flags & syn) != 0
+            && (packet.tcp_flags & (ack | fin | rst)) == 0;
         if (!result.expired.empty() || flows_.size() == max_flows_) {
             auto oldest = idle_index_.begin();
             auto victim = flows_.find(oldest->second);
@@ -102,9 +109,29 @@ FlowUpdate FlowTable::update(const packet::ParsedPacket& packet) {
     ++flow.packet_count;
     flow.byte_count += packet.total_length;
     if (packet.is_tcp()) {
+        constexpr std::uint8_t syn = 0x02;
+        constexpr std::uint8_t ack = 0x10;
+        constexpr std::uint8_t fin = 0x01;
+        constexpr std::uint8_t rst = 0x04;
         if (packet.tcp_flags & 0x02) ++flow.syn_count;
+        if ((packet.tcp_flags & (syn | ack | fin | rst)) == syn)
+            ++flow.initial_syn_count;
+        if ((packet.tcp_flags & (syn | ack | fin | rst)) == (syn | ack))
+            ++flow.syn_ack_count;
+        if ((packet.tcp_flags & (ack | syn | fin | rst)) == ack)
+            ++flow.ack_count;
         if (packet.tcp_flags & 0x01) ++flow.fin_count;
         if (packet.tcp_flags & 0x04) ++flow.rst_count;
+        if (!forward && flow.tcp_handshake_started
+            && (packet.tcp_flags & (syn | ack)) == (syn | ack)
+            && (packet.tcp_flags & (fin | rst)) == 0) {
+            flow.tcp_syn_ack_seen = true;
+        }
+        if (forward && flow.tcp_syn_ack_seen
+            && (packet.tcp_flags & ack) != 0
+            && (packet.tcp_flags & (syn | fin | rst)) == 0) {
+            flow.tcp_handshake_completed = true;
+        }
     }
     if (forward) {
         ++flow.fwd_packet_count;

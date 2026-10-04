@@ -1,6 +1,7 @@
 #include "intriqo/capture/capture.hpp"
 #include "intriqo/detection/detector_registry.hpp"
 #include "intriqo/detection/port_scan_detector.hpp"
+#include "intriqo/detection/syn_flood_detector.hpp"
 #include "intriqo/pipeline/pipeline_impl.hpp"
 #include "intriqo/runtime/engine_impl.hpp"
 #include "intriqo/transport/event_sink.hpp"
@@ -39,6 +40,7 @@ struct Options {
     bool synthetic{false};
     bool pcap{false};
     bool live{false};
+    bool syn_flood_enabled{false};
     capture::LiveCaptureConfig live_config;
     double duration_seconds{3.0};
     bool synthetic_option_set{false};
@@ -72,11 +74,13 @@ void usage() {
   --portscan-window SECONDS           Finite positive detection window (default 10)
   --portscan-unique-port-threshold N   Distinct ports required (1..65535; default 10)
   --portscan-minimum-attempts N        Positive minimum attempts (default 10)
+  --with-syn-flood                    Register the production SYN flood detector
   --help                             Show this help
 
-Measures CaptureSource -> Engine parser -> Pipeline -> DetectorRegistry -> real
-PortScanDetector -> FileEventSink(/dev/null), including JSON serialization and
-file transport. Events are actually generated and submitted, never pre-counted.
+ Measures CaptureSource -> Engine parser -> Pipeline -> DetectorRegistry ->
+registered deterministic detectors -> FileEventSink(/dev/null), including JSON
+serialization and file transport. Events are actually generated and submitted,
+never pre-counted. Use --with-syn-flood for the matched two-detector candidate.
 Latency is capture-to-Engine-observer, not isolated transport latency; it includes
 work before the runtime invokes the observer. PCAP latency is N/A because replay
 timestamps can be historical. SIGINT/SIGTERM flush and report.
@@ -163,6 +167,8 @@ Options parse_options(int argc, char** argv) {
             options.detector.unique_port_threshold = positive_integer(value(), flag, 65535);
         } else if (flag == "--portscan-minimum-attempts") {
             options.detector.minimum_attempts = positive_integer(value(), flag);
+        } else if (flag == "--with-syn-flood") {
+            options.syn_flood_enabled = true;
         } else {
             throw OptionError("unknown option (use --help for supported options)");
         }
@@ -304,7 +310,8 @@ void report(const Options& options, const metrics::EngineMetrics& metrics, doubl
               << "benchmark mode=" << (options.synthetic ? "synthetic" : options.live ? "live" : "pcap")
               << " source=" << std::quoted(safe_label(options.synthetic ? "generated-tcp-syn" : options.live ? options.live_config.interface_name : options.pcap_path))
               << " status=" << (failed ? "error" : stop_requested.load(std::memory_order_relaxed) ? "interrupted" : "complete")
-              << " detector=port_scan registry=enabled sink=file output=/dev/null transport=included"
+              << " detector=port_scan" << (options.syn_flood_enabled ? "+syn_flood" : "")
+               << " registry=enabled sink=file output=/dev/null transport=included"
               << " portscan_window_seconds=" << options.detector.window_seconds
               << " portscan_unique_port_threshold=" << options.detector.unique_port_threshold
               << " portscan_minimum_attempts=" << options.detector.minimum_attempts
@@ -377,6 +384,8 @@ int run(const Options& options) {
     else capture = std::make_unique<capture::PcapReplaySource>(capture::PcapReplayConfig{options.pcap_path, false});
     auto registry = std::make_unique<detection::DetectorRegistry>();
     registry->add(std::make_unique<detection::PortScanDetector>(options.detector));
+    if (options.syn_flood_enabled)
+        registry->add(std::make_unique<detection::SynFloodDetector>());
     auto pipeline = std::make_unique<pipeline::PipelineImpl>(std::move(registry), Duration{options.flow_idle_timeout}, options.max_active_flows);
     auto sink = std::make_unique<transport::FileEventSink>("/dev/null");
     runtime::EngineImpl engine(std::move(capture), std::move(pipeline), std::move(sink));

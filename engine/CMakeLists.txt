@@ -26,6 +26,7 @@ target_sources(intriqo_engine_lib
         src/features/extractor.cpp
         src/events/security_event.cpp
         src/detection/port_scan_detector.cpp
+        src/detection/syn_flood_detector.cpp
         src/pipeline/pipeline_impl.cpp
         src/transport/event_sink.cpp
         src/transport/queued_event_sink.cpp

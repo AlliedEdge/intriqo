@@ -23,7 +23,13 @@ inline void detailed_counters(std::ostream& out, const metrics::EngineMetrics& m
         << " detector_peak_sources=" << m.detector_peak_sources
         << " detector_peak_observations=" << m.detector_peak_observations
         << " detector_expired_sources=" << m.detector_expired_sources
+        << " detector_expired_observations=" << m.detector_expired_observations
         << " detector_state_rejections=" << m.detector_state_rejections
+        << " detector_state_evictions=" << m.detector_state_evictions
+        << " detector_syn_observations=" << m.detector_syn_observations
+        << " detector_syn_ack_observations=" << m.detector_syn_ack_observations
+        << " detector_ack_completions=" << m.detector_ack_completions
+        << " detector_incomplete_handshakes=" << m.detector_incomplete_handshakes
         << " detector_errors=" << m.detector_errors
         << " events_generated=" << m.detections_fired
         << " detections_generated=" << m.detections_fired

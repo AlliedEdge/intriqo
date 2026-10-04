@@ -16,4 +16,30 @@ std::string uuid(){std::random_device rd; std::mt19937_64 g(rd()); std::array<un
 }
 std::string SecurityEvent::to_json() const { std::ostringstream o; o<<"{\"event_id\":\""<<escape(event_id)<<"\",\"event_type\":\""<<event_type_name(event_type)<<"\",\"severity\":\""<<severity_name(severity)<<"\",\"timestamp\":\""<<format_timestamp(timestamp)<<"\",\"source_address\":\""<<source_address.to_string()<<"\",\"destination_address\":\""<<destination_address.to_string()<<'"'; if(!description.empty())o<<",\"description\":\""<<escape(description)<<'"'; o<<",\"details\":{"; bool first=true; for(const auto& [k,v]:details){if(!first)o<<',';first=false;o<<'"'<<escape(k)<<"\":";value(o,v);} o<<"}}"; return o.str(); }
 SecurityEvent make_port_scan_event(const IPv4Address& source,const IPv4Address& destination,Severity sev,std::uint64_t ports,std::uint64_t attempts,double window,std::uint16_t threshold,TimePoint ts){ SecurityEvent e; e.event_id=uuid(); e.timestamp=ts; e.event_type=EventType::PORT_SCAN; e.severity=sev; e.source_address=source; e.destination_address=destination; e.description="Deterministic port scan detected"; e.details.emplace("detector",std::string("port_scan")); e.details.emplace("unique_destination_ports",static_cast<std::int64_t>(ports)); e.details.emplace("connection_attempts",static_cast<std::int64_t>(attempts)); e.details.emplace("window_seconds",window); e.details.emplace("threshold",static_cast<std::int64_t>(threshold)); return e; }
+SecurityEvent make_syn_flood_event(
+    const IPv4Address& source, const IPv4Address& destination, Severity severity,
+    Port destination_port, std::uint64_t attempts, std::uint64_t syn_acks,
+    std::uint64_t completed_handshakes, std::uint64_t incomplete_handshakes,
+    double incomplete_ratio, double rate_per_second, double window_seconds,
+    TimePoint timestamp) {
+    SecurityEvent event;
+    event.event_id = uuid();
+    event.timestamp = timestamp;
+    event.event_type = EventType::SYN_FLOOD;
+    event.severity = severity;
+    event.source_address = source;
+    event.destination_address = destination;
+    event.description = "Suspicious high-rate incomplete TCP handshakes observed";
+    event.details.emplace("detector", std::string("syn_flood"));
+    event.details.emplace("destination_port", static_cast<std::int64_t>(destination_port));
+    event.details.emplace("initial_syn_attempts", static_cast<std::int64_t>(attempts));
+    event.details.emplace("connection_attempts", static_cast<std::int64_t>(attempts));
+    event.details.emplace("syn_ack_count", static_cast<std::int64_t>(syn_acks));
+    event.details.emplace("completed_handshakes", static_cast<std::int64_t>(completed_handshakes));
+    event.details.emplace("incomplete_handshakes", static_cast<std::int64_t>(incomplete_handshakes));
+    event.details.emplace("incomplete_ratio", incomplete_ratio);
+    event.details.emplace("rate_per_second", rate_per_second);
+    event.details.emplace("window_seconds", window_seconds);
+    return event;
+}
 }

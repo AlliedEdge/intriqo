@@ -50,6 +50,11 @@ target_link_libraries(test_detection PRIVATE intriqo_engine_lib GTest::gtest_mai
 target_include_directories(test_detection PRIVATE ${PROJECT_SOURCE_DIR}/include)
 gtest_discover_tests(test_detection)
 
+add_executable(test_syn_flood_detector test_syn_flood_detector.cpp)
+target_link_libraries(test_syn_flood_detector PRIVATE intriqo_engine_lib GTest::gtest_main)
+target_include_directories(test_syn_flood_detector PRIVATE ${PROJECT_SOURCE_DIR}/include)
+gtest_discover_tests(test_syn_flood_detector)
+
 add_executable(test_transport test_transport.cpp)
 target_link_libraries(test_transport PRIVATE intriqo_engine_lib GTest::gtest_main)
 target_include_directories(test_transport PRIVATE ${PROJECT_SOURCE_DIR}/include)
