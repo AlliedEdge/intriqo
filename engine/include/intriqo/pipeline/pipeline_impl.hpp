@@ -12,14 +12,17 @@ namespace intriqo::pipeline {
 class PipelineImpl final : public Pipeline {
 public:
     explicit PipelineImpl(std::unique_ptr<detection::Detector> detector,
-                          Duration flow_timeout = Duration{60.0});
+                          Duration flow_timeout = Duration{60.0},
+                          std::size_t max_flows = 100000);
     void ingest(const packet::ParsedPacket&) override;
     void on_event(EventCallback) override;
     void flush() override;
+    void maintain(TimePoint) override;
     [[nodiscard]] std::size_t active_flow_count() const noexcept override;
     [[nodiscard]] PipelineStatistics statistics() const noexcept override;
 private:
     void evaluate(const flow::NetworkFlow&, std::exception_ptr& callback_error);
+    void retire(const flow::NetworkFlow&, std::exception_ptr& callback_error);
     void publish_statistics();
 
     std::mutex processing_mutex_;

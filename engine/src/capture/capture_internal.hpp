@@ -25,9 +25,9 @@ struct CaptureState {
     bool started{false}; // protected by mutex
     PacketCallback callback;
     std::function<void()> ready_callback;
-    std::atomic<std::uint64_t> received{0};
-    std::atomic<std::uint64_t> dropped{0};
-    std::atomic<std::uint64_t> interface_dropped{0};
+    std::function<void(TimePoint)> idle_callback;
+    mutable std::mutex statistics_mutex;
+    CaptureStatistics counters;
 
     void set_callback(PacketCallback cb) {
         std::lock_guard lock(mutex);
@@ -44,7 +44,10 @@ struct CaptureState {
         }
         started = true;
         if (stopped.load()) return {};
-        if (!callback) throw std::invalid_argument("Capture source requires a packet callback");
+        if (!callback) {
+            record_error();
+            throw std::invalid_argument("Capture source requires a packet callback");
+        }
         return callback;
     }
 
@@ -56,6 +59,46 @@ struct CaptureState {
     void ready() {
         // Configuration is immutable after begin(); no lock across user code.
         if (ready_callback && !stopped.load()) ready_callback();
+    }
+
+    void set_idle_callback(std::function<void(TimePoint)> cb) {
+        std::lock_guard lock(mutex);
+        if (started) throw std::logic_error("Set idle callback before capture starts");
+        idle_callback = std::move(cb);
+    }
+
+    void idle() {
+        if (idle_callback && !stopped.load()) idle_callback(Clock::now());
+    }
+
+    void record_delivery(bool finite_input) noexcept {
+        std::lock_guard lock(statistics_mutex);
+        ++counters.packets_captured;
+        if (finite_input) ++counters.packets_received;
+    }
+
+    void record_error() noexcept {
+        std::lock_guard lock(statistics_mutex);
+        ++counters.errors;
+    }
+
+    void record_statistics_error() noexcept {
+        std::lock_guard lock(statistics_mutex);
+        ++counters.errors;
+        counters.statistics_available = false;
+    }
+
+    void set_statistics_available(bool available) noexcept {
+        std::lock_guard lock(statistics_mutex);
+        counters.statistics_available = available;
+    }
+
+    void publish_kernel_statistics(const CaptureStatistics& totals) noexcept {
+        std::lock_guard lock(statistics_mutex);
+        counters.packets_received = totals.packets_received;
+        counters.packets_dropped = totals.packets_dropped;
+        counters.interface_dropped = totals.interface_dropped;
+        counters.statistics_available = true;
     }
 
     void stop() noexcept {
@@ -72,7 +115,8 @@ struct CaptureState {
     }
 
     CaptureStatistics statistics() const noexcept {
-        return {received.load(), dropped.load(), interface_dropped.load()};
+        std::lock_guard lock(statistics_mutex);
+        return counters;
     }
 };
 

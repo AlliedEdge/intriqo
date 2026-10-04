@@ -19,6 +19,9 @@ struct CaptureStatistics {
     std::uint64_t packets_received{0};
     std::uint64_t packets_dropped{0};
     std::uint64_t interface_dropped{0};
+    std::uint64_t packets_captured{0}; ///< Actual packet callback invocations
+    std::uint64_t errors{0};           ///< Capture/setup/statistics errors, not callback errors
+    bool statistics_available{false}; ///< Kernel counters available (or finite input counted)
 };
 
 /// Abstract capture source (live interface or PCAP replay).
@@ -34,7 +37,11 @@ public:
     virtual void set_callback(PacketCallback cb) = 0;
 
     /// Optional notification after source initialization succeeds, before packets.
-    virtual void set_ready_callback(std::function<void()> cb) {}
+    virtual void set_ready_callback(std::function<void()>) {}
+
+    /// Optional live-idle maintenance notification. Offline replay does not use
+    /// wall-clock time to expire historical input.
+    virtual void set_idle_callback(std::function<void(TimePoint)>) {}
 
     /// Start capture (blocking until stop() is called or EOF for PCAP).
     virtual void start() = 0;
@@ -57,6 +64,7 @@ struct LiveCaptureConfig {
     std::chrono::milliseconds timeout{100};  ///< Packet buffer timeout
     std::string bpf_filter;                  ///< Optional BPF filter expression
     int         buffer_size{16 * 1024 * 1024}; ///< Kernel capture buffer request, bytes
+    bool        immediate{false};            ///< Disable packet-buffer batching when requested
 };
 
 /// Configuration for PCAP file replay.
@@ -110,6 +118,7 @@ public:
     ~LiveCaptureSource() override;
     void set_callback(PacketCallback cb) override;
     void set_ready_callback(std::function<void()> cb) override;
+    void set_idle_callback(std::function<void(TimePoint)> cb) override;
     void start() override;
     void stop() noexcept override;
     [[nodiscard]] std::string description() const override;

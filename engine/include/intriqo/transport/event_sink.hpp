@@ -1,10 +1,21 @@
 #pragma once
 
 #include "intriqo/events/security_event.hpp"
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <mutex>
 
 namespace intriqo::transport {
+
+struct EventDeliveryStatistics {
+    std::uint64_t events_emitted{0};      ///< Successfully acknowledged events
+    std::uint64_t event_sink_failures{0}; ///< Rejections and failed sink operations
+    std::uint64_t queue_depth{0};         ///< Pending events, excluding the worker's event
+    std::uint64_t queue_peak_depth{0};
+    std::uint64_t queue_overflows{0};
+    double event_sink_seconds{0.0};       ///< Actual underlying submit/flush time
+};
 
 class SecurityEventSink {
 public:
@@ -13,6 +24,8 @@ public:
     virtual bool prepare() noexcept { return true; }
     virtual bool flush() noexcept { return true; }
     [[nodiscard]] virtual std::string error() const { return {}; }
+    [[nodiscard]] virtual std::optional<EventDeliveryStatistics>
+    delivery_statistics() const noexcept { return std::nullopt; }
 };
 
 class FileEventSink final : public SecurityEventSink {

@@ -77,10 +77,11 @@ void SyntheticCaptureSource::start() {
     const auto callback = state_->begin();
     if (!callback) return;
     auto timestamp = TimePoint{std::chrono::seconds(1'700'000'000)};
+    state_->set_statistics_available(true);
     state_->ready();
     for (std::size_t i = 0; i < config_.packet_count && !state_->stopped.load(); ++i) {
         const auto bytes = tcp_packet(i, config_.unique_ports);
-        state_->received.fetch_add(1);
+        state_->record_delivery(true);
         callback({timestamp, bytes, detail::ethernet_link_type, bytes.size()});
         timestamp += std::chrono::milliseconds(1);
     }

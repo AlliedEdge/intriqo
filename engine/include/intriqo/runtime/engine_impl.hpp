@@ -31,8 +31,12 @@ private:
     enum class Lifecycle { ready, running, finished };
     void receive_packet(packet::PacketView);
     void receive_event(events::SecurityEvent);
+    void maintain(TimePoint);
     void sync_pipeline_statistics();
     void sync_capture_statistics();
+    /// Returns true when the sink owns authoritative delivery accounting.
+    /// Called on the processing/run thread; snapshots do not request stop.
+    bool sync_sink_statistics(const char* operation);
     void record_sink_failure(const char* operation);
 
     mutable std::mutex lifecycle_mutex_;

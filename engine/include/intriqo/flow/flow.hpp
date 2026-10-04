@@ -2,8 +2,10 @@
 
 #include "intriqo/common/types.hpp"
 #include "intriqo/packet/packet.hpp"
+#include <map>
 #include <optional>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace intriqo::flow {
@@ -56,12 +58,16 @@ enum class FlowState {
 struct FlowUpdate {
     NetworkFlow flow;
     bool created{false};
+    std::vector<NetworkFlow> expired;
+    std::optional<NetworkFlow> evicted;
 };
 
 class FlowTable {
 public:
-    explicit FlowTable(Duration idle_timeout = Duration{60.0});
+    explicit FlowTable(Duration idle_timeout = Duration{60.0},
+                       std::size_t max_flows = 100000);
 
+    /// Expire idle flows before updating; evict the oldest idle flow if full.
     [[nodiscard]] FlowUpdate update(const packet::ParsedPacket& packet);
     [[nodiscard]] std::vector<NetworkFlow> expire(TimePoint now);
     [[nodiscard]] std::vector<NetworkFlow> flush();
@@ -71,8 +77,14 @@ private:
     struct KeyHash {
         std::size_t operator()(const FlowKey& key) const noexcept;
     };
+    [[nodiscard]] std::vector<NetworkFlow> collect_expired(TimePoint now) const;
+    void erase_oldest(std::size_t count) noexcept;
+    using IdleKey = std::pair<TimePoint, FlowId>;
     std::unordered_map<FlowKey, NetworkFlow, KeyHash> flows_;
+    // Exactly one index entry per active flow; FlowId breaks timestamp ties.
+    std::map<IdleKey, FlowKey> idle_index_;
     Duration idle_timeout_;
+    std::size_t max_flows_;
     FlowId next_id_{1};
 };
 

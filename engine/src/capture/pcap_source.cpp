@@ -27,6 +27,7 @@ void PcapReplaySource::start() {
     if (!callback) return;
 
     const auto fail = [this](const std::string& reason) {
+        state_->record_error();
         return std::runtime_error("PCAP replay '" + config_.file_path + "': " + reason);
     };
     std::ifstream input(config_.file_path, std::ios::binary);
@@ -70,6 +71,7 @@ void PcapReplaySource::start() {
     }
 
     std::vector<std::byte> bytes;
+    state_->set_statistics_available(true);
     state_->ready();
     std::vector<std::byte> normalized_storage;
     std::uint64_t record = 0;
@@ -127,7 +129,7 @@ void PcapReplaySource::start() {
         }
         if (state_->stopped.load()) break;
         const auto normalized = detail::normalize(bytes, link_type, normalized_storage);
-        state_->received.fetch_add(1);
+        state_->record_delivery(true);
         callback({timestamp, normalized.bytes, normalized.link_type, wire_length, captured_length});
     }
 }

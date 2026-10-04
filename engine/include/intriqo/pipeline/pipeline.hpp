@@ -3,6 +3,7 @@
 #include "intriqo/packet/packet.hpp"
 #include "intriqo/flow/flow.hpp"
 #include "intriqo/events/security_event.hpp"
+#include "intriqo/detection/detector.hpp"
 #include <functional>
 #include <vector>
 
@@ -13,6 +14,9 @@ struct PipelineStatistics {
     std::uint64_t flows_expired{0};
     std::uint64_t flows_flushed{0};
     std::uint64_t flows_active{0};
+    std::uint64_t flows_evicted{0};
+    std::uint64_t peak_active_flows{0};
+    detection::DetectorStatistics detection;
 };
 
 /// Callback invoked for every SecurityEvent the pipeline produces.
@@ -37,6 +41,9 @@ public:
     /// Flush all active flows and emit any pending events.
     virtual void flush() = 0;
 
+    /// Expire idle state without requiring a packet; optional for implementations.
+    virtual void maintain(TimePoint) {}
+
     /// Return currently active flow count (for metrics).
     [[nodiscard]] virtual std::size_t active_flow_count() const noexcept = 0;
 
@@ -44,6 +51,7 @@ public:
     [[nodiscard]] virtual PipelineStatistics statistics() const noexcept {
         PipelineStatistics result;
         result.flows_active = active_flow_count();
+        result.peak_active_flows = result.flows_active;
         return result;
     }
 };
