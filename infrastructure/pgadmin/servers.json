@@ -1,0 +1,15 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Intriqo (local)",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "intriqo",
+      "Username": "intriqo",
+      "Password": "intriqo_dev",
+      "SSLMode": "prefer",
+      "SavePassword": true
+    }
+  }
+}
