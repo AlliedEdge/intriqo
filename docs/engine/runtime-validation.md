@@ -1,5 +1,10 @@
 # IDS runtime implementation and validation report
 
+**Historical runtime-slice report.** Measurements and findings below describe
+the original implementation, not the subsequent hardening result. Its observed
+capture drops are intentionally preserved. Current state/queue policies and
+new measurements are in [Capture Reliability and State Management](capture-hardening-validation.md).
+
 Validated on 2026-10-04 (Asia/Calcutta). Checkout:
 `/run/media/rayan/Workspace1/01_Projects/intriqo`.
 The functional runtime/live vertical slice is implemented. This report does
@@ -327,3 +332,43 @@ real authorized NIC/SPAN/TAP capture drops, and harden trusted event transport
 delivery. Do that before adding detectors/agents or declaring unattended
 production operation. Kafka, Redis, Kubernetes, microservices, Prometheus,
 LLM integration, blocking/injection and UI redesign remain deferred.
+
+## Capture Reliability and State Management
+
+The next hardening phase was implemented and validated on 2026-10-04 without
+changing Control Plane/agent/React responsibilities. The original numbers and
+limitations above remain historical evidence; state growth and capture
+accounting limitations were addressed, not retroactively erased.
+
+- Flow state: 60-second default timeout, 100000-flow cap, bounded ordered idle
+  index, live idle maintenance and explicit deterministic eviction counters.
+- Detector state: 4096 source windows / 100000 counted active-flow IDs by
+  default, event-time expiration, retirement deduplication, explicit rejection
+  at capacity, synchronized current/peak/error counters.
+- Capture: buffered `pcap_dispatch(256)`, 100-ms `pcap_stats` sampling,
+  configurable timeout/immediate mode, raw `ps_recv` / `ps_drop` / `ps_ifdrop`
+  separate from callbacks, parser rejects and completed processing.
+- Backpressure: synchronous default retained; a measured slow-HTTP probe
+  justified optional bounded event delivery. Same final binary reported
+  **16128 / 117476 capture drops** for 0.5/1-second synchronous acknowledgments;
+  queued capacity 256 reported **0 / 0**, one acknowledgment and peak depth 1.
+  No durability or sustained-overload guarantee follows.
+- Final tests: **70/70 CTest entries** each Release/no-libpcap/ASan+UBSan;
+  Control Plane **64**, agents **81 + 4 subtests**, existing E2E **1**, live E2E
+  **4** (both signals and delivery modes), frontend regression **11**.
+- Five-minute live soak: **3000010 captured/processed**, **0** reported capture/
+  interface drops/rejects, one event, peak 11 flows/final zero. Sampled initial/
+  peak/final RSS **5760 / 22660 / 6412 KiB**, CPU **1.323683%**.
+- Five-minute varied state fixture: **3000000 packets**, peak flows/sources/IDs
+  **256/64/128**, final state zero; RSS **4628 / 5028 / 5028 KiB**. Large eviction/
+  rejection counts are expected stress outcomes, not concealed detection coverage.
+- Final matched offline medians: baseline **444094 / 483196 pps**, candidate
+  **1632097 / 1767229 pps** synthetic/PCAP; three runs each. The shared-host
+  variance and distinct live/offline scopes are documented. Buffered saturation
+  was not established; ~225k UDP/s was the highest short tested offered point.
+
+See [the full 16-part report](capture-hardening-validation.md) for exact files,
+configuration/counter meaning, preserved historical/failed evidence, all new
+versioned result paths, actual CPU/RSS/drop figures and 5/30/60-minute procedures.
+Only five-minute durations were run. Plain HTTP/DNS/shutdown constraints,
+physical-NIC validation, packet P99 and prolonged capacity testing remain open.

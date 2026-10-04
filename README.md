@@ -83,6 +83,7 @@ The full documentation is split into focused pages. Click any section to go stra
 | Page | Description |
 |---|---|
 | [C++ IDS Engine](docs/engine/ids-engine.md) | Subsystems, pipeline, detection approach, why C++ |
+| [Capture Hardening Validation](docs/engine/capture-hardening-validation.md) | State policies, five-minute soaks, actual losses and versioned comparisons |
 
 ### 🛡 Security
 
@@ -217,9 +218,44 @@ configuration. Promiscuous mode alone does not supply network-wide visibility.
 See [limitations and configuration](docs/engine/ids-engine.md) and
 [actual verification/benchmark results](docs/engine/runtime-validation.md).
 
+### Capture Reliability and State Management
+
+The existing IDS now bounds active flows (default **100000**, idle timeout
+**60 seconds**) and port-scan state (**4096 source windows / 100000 flow IDs**).
+Idle maintenance and deterministic oldest-flow eviction are counted. Capture
+defaults to buffered libpcap dispatch with a **16 MiB request / 100 ms timeout**;
+raw kernel/interface drops, parser rejections and completed processing remain
+separate. The original observed **867 captured / 265 drops** is preserved.
+
+`--flow-idle-timeout`, `--max-active-flows`, `--max-tracked-sources`,
+`--max-tracked-observations`, `--capture-timeout-ms` and `--capture-immediate`
+make the policies explicit. Optional `--event-queue-capacity 256` wraps the
+existing sink in a bounded in-process delivery queue; **0 is the synchronous
+default**. Overflow/failure stops capture, counts failed events and drains
+admitted work. This is not a durable queue or a zero-loss guarantee.
+
+Final five-minute loopback/file-sink soak: **3000010 captured/processed**, zero
+reported capture/interface drops or parser rejects, one known event acknowledged,
+peak 11 flows, final active state zero. The separate high-cardinality state
+fixture processed **3 million packets** under 256/64/128 limits; RSS was
+**4628 / 5028 / 5028 KiB** initial/peak/final. 30/60-minute procedures exist but
+were not run. Synchronous HTTP acknowledgment stalls still caused measured
+capture loss; the optional queue relieved the tested bounded stall only.
+
+```bash
+# Short deterministic state/expiry/correctness exercise; no capture privileges:
+build/runtime-release/engine/intriqo-state-soak --duration-seconds 3 \
+  --rate 10000 --max-active-flows 256 --max-tracked-sources 64 \
+  --max-tracked-observations 128 --flow-idle-timeout 2
+```
+
+See the [16-part measured report](docs/engine/capture-hardening-validation.md)
+for three-repeat synthetic/PCAP results, overload boundaries, counter semantics,
+all changed files and 300/1800/3600-second local-only release procedures.
+
 | Layer | Status | Details |
 |---|---|---|
-| **C++ Engine** | 🟢 Runtime/live slice implemented | Concrete Engine, Linux libpcap, synthetic/classic PCAP, detector registry, file/HTTP sinks, graceful signals, counters; 43 CTest entries including all original 19 tests |
+| **C++ Engine** | 🟢 Runtime/state hardening implemented | Linux libpcap, synthetic/classic PCAP, bounded flows/detector state, optional bounded sink queue, signals/counters; 70 CTest entries including all original 19 tests |
 | **Python Agents** | 🟢 Foundation complete | `intriqo_agents` package, 79 tests passing |
 | **Control Plane** | 🟢 Phase 1 complete | FastAPI, PostgreSQL persistence, JWT/RBAC, events, incidents, tasks, findings, audit logs |
 | **Frontend** | 🟡 Structure complete | Vite + React 18, SOC feature dirs, routing shell |

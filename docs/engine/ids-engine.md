@@ -1,6 +1,6 @@
 # C++ IDS Engine
 
-← [README](../../README.md) · [Actual validation and benchmark report](runtime-validation.md)
+← [README](../../README.md) · [Historical runtime report](runtime-validation.md) · [Capture hardening measurements](capture-hardening-validation.md)
 
 ## Implemented scope
 
@@ -65,7 +65,9 @@ flows/reset detector state, flush the sink, freeze runtime duration, then
 report errors. The CLI signal handler only writes a lock-free flag; a sleeping
 watcher requests stop outside signal context. Capture uses `poll` and an
 `eventfd` wakeup, with bounded nonselectable-device retry, not a busy loop.
-Sink failures stop capture and return a nonzero exit code after cleanup.
+Sink failures stop capture and return a nonzero exit code after cleanup. Optional
+queued delivery closes admission, drains admitted events and joins its worker
+before the final summary; admission is not counted as successful delivery.
 
 ## Build and prerequisites
 
@@ -142,7 +144,14 @@ Promiscuous mode is not a substitute for an appropriate traffic source.
 | `--snaplen BYTES` | 65535, accepted range 1..16777216; small values can deliberately truncate input |
 | `--no-promiscuous` | Promiscuous mode otherwise enabled |
 | `--capture-buffer-bytes BYTES` | 16777216 (16 MiB), positive libpcap kernel buffer request; live only |
+| `--capture-timeout-ms MS` | 100, range 1..60000; buffered capture timeout, live only |
+| `--capture-immediate` | Off by default; disables buffering, live only |
+| `--flow-idle-timeout SECONDS` | 60, finite positive idle expiration |
+| `--max-active-flows N` | 100000, positive active-flow capacity |
+| `--max-tracked-sources N` | 4096, positive port-scan source-window capacity |
+| `--max-tracked-observations N` | 100000, positive counted flow-ID capacity |
 | `--sink file\|http` | `file` |
+| `--event-queue-capacity N` | 0 (synchronous); 1..1000000 enables bounded pending-event ring plus one in flight |
 | `--output PATH` | `intriqo-events.jsonl`, file mode only |
 | `--control-plane-url URL` | Overrides environment base URL, HTTP mode only |
 | `--portscan-window SECONDS` | 10, finite and positive |
@@ -156,7 +165,10 @@ Promiscuous mode is not a substitute for an appropriate traffic source.
 Aliases: `--synthetic-packet-count`, `--portscan-window-seconds`.
 Invalid options return exit code 2; initialization/runtime/delivery errors return
 1; normal EOF and graceful SIGINT/SIGTERM return 0. No credentials can be set
-through a CLI token argument. Runtime flow idle timeout remains 60 seconds.
+through a CLI token argument. CLI state/queue values override these environment
+defaults: `INTRIQO_FLOW_IDLE_TIMEOUT_SECONDS`, `INTRIQO_MAX_ACTIVE_FLOWS`,
+`INTRIQO_PORTSCAN_MAX_SOURCES`, `INTRIQO_PORTSCAN_MAX_OBSERVATIONS`,
+`INTRIQO_EVENT_QUEUE_CAPACITY`.
 
 ### Control Plane environment
 
@@ -197,6 +209,73 @@ system; benign connection activity can meet its thresholds. Severity stays HIGH
 by default. Changing the threshold/window/minimum-attempts is supported; this
 phase does not introduce new detectors or detection algorithms.
 
+## Capture Reliability and State Management
+
+### Bounded lifecycle
+
+FlowTable has at most `max_active_flows` map entries and the same number of
+ordered `(last_seen, FlowId)` index entries. Expire eligible flows before new
+admission; if still full, deterministically evict the oldest timestamp/ID and
+increment `flows_evicted`. No stale heap/index records or per-packet full-map
+expiry scan accumulate. Idle timeout uses `>=`; late packets do not rewind
+`last_seen`. Live idle poll callbacks maintain flow/detector state even without
+packets. Offline replay uses event time, not the current wall clock.
+FIN/RST remain tracked counters, not immediate flow close. Shutdown drains both
+indexes and resets detector state. These are count bounds, not a heap-byte SLA.
+
+Port-scan source windows expire beyond the 10-second default event-time window.
+Counted flow IDs stay until pipeline retirement, so a still-active flow cannot
+recount after window expiry. An ordered index has one record per source; ports
+are naturally bounded to 65535/source. Capacity pressure rejects new admission
+and increments `detector_state_rejections`; existing windows are not silently
+evicted. Detection coverage is therefore reduced when limits are reached.
+Late packets within existing windows remain eligible; stale new-source windows
+are rejected against a monotonic watermark. Threshold meaning and one event per
+source/window remain unchanged. Size limits for the real workload; many sources
+times many unique ports can still require substantial memory.
+
+### Capture versus processing versus delivery
+
+Buffered libpcap is the default: requested 16 MiB kernel buffer, 100 ms timeout,
+`pcap_dispatch(256)` batches, interruptible draining until no buffered packets,
+and `pcap_stats` every 100 ms plus startup/shutdown. The runtime reports raw
+receive/capture/interface drops separately from callback/parse/processing counts.
+Unsupported and truncated/malformed packet categories are distinct; unavailable
+capture statistics print `N/A`. Loopback counters are not unique wire packets.
+Neither a larger buffer nor batching guarantees loss-free capture. Immediate
+mode lowered the single-event latency but lost substantial traffic in the
+measured 10000 UDP/s load; see the report before choosing that tradeoff.
+
+Parsing, flow tracking and detection remain synchronous. Optional
+`--event-queue-capacity 256` decouples event transport only, with at most 256
+pending events plus one in flight. Overflow rejects/counts the event, stops
+capture, drains admitted work and returns an error. Worker acknowledgments, not
+enqueue success, drive `events_emitted`. No durable/retry buffering is added.
+The queue relieved a measured single slow-HTTP stall; it cannot absorb sustained
+event production exceeding sink capacity. The default 0 retains synchronous
+capture starvation under a slow sink. Shutdown depends on underlying I/O/DNS.
+
+### Soak and memory methodology
+
+`intriqo-state-soak` drives checksummed varied-source/port/repeated-flow fixtures
+through the full runtime; it alternates capacity pressure with logical-time
+expiry, verifies a two-window scan, and streams RSS/CPU/state samples. Fixture
+logical time is separate from wall duration: packet P99 is not measured.
+`reliability_benchmark.py` supplies ordinary local loopback UDP plus a known TCP
+scan, captures only reserved ports, and measures the actual engine PID. No
+packets are injected or sent to external targets. RSS includes kernel-capture
+mappings; post-flush RSS and inherited `ru_maxrss` are different scopes.
+
+One-second CI soak is included in CTest. Manual release runs support
+**300 / 1800 / 3600 seconds**; only 300-second runs were completed in validation.
+See [runnable procedures and raw evidence](capture-hardening-validation.md#10-soak-test-methodology).
+Final state fixture: 3 million packets, peak flows/sources/IDs **256/64/128**,
+RSS **4628/5028/5028 KiB** initial/peak/final. Final live five-minute run:
+**3000010 captured/processed**, zero reported capture/interface drops, one event,
+RSS **5760/22660/6412 KiB**. These observations are not a no-leak or NIC-capacity
+guarantee; the [16-part report](capture-hardening-validation.md) retains all
+observed baseline/immediate/synchronous-HTTP losses and remaining gaps.
+
 ## Event sinks
 
 - **File:** append JSONL, synchronously serialize/write/flush/close each event.
@@ -209,11 +288,17 @@ phase does not introduce new detectors or detection algorithms.
   operation outside that socket deadline.
 - Sink `prepare()`/`flush()`/`error()` are additive default methods, so existing sink
   implementations still compile. Runtime checks file sink writability before
-  capture starts. Built-in sinks have no queued events at flush.
+  capture starts. Ordinary built-in sinks have no queued events at flush.
+- Optional `QueuedEventSink`: one bounded in-process worker around either sink.
+  `submit(true)` means admission only; additive `delivery_statistics()` reports
+  actual acknowledged events, failures, pending depth/peak/overflow and sink time.
+  A successful flush drains and joins; error/overflow returns nonzero without
+  counting the same earlier delivery failure twice. Engine observers see event
+  generation/admission, not necessarily the worker's final acknowledgment.
 
 **The existing transport supports plain HTTP hostname/IPv4 URLs, not HTTPS.**
 Use it only on a trusted local/isolated link. Do not transmit bearer credentials
-across an untrusted network. There is no retry queue, durable spool, batching,
+across an untrusted network. There is no retry queue, durable spool, transport batching,
 or delivery guarantee beyond acknowledged submission; failures stop runtime
 instead of silently dropping events. Capture readiness does not guarantee the
 HTTP endpoint is available; delivery is verified at actual event submission.
@@ -230,16 +315,33 @@ HTTP endpoint is available; delivery is verified at actual event submission.
 | `packets_malformed` | Malformed/truncated subset of rejected; unsupported protocols are not counted malformed |
 | `packets_dropped` | libpcap/kernel drop + interface-drop counters; zero for offline sources, platform-dependent semantics |
 | `flows_created` | Actual newly created bidirectional flows |
-| `flows_expired` | Idle flows expired by packet-time-driven pipeline expiry |
+| `flows_expired` | Idle flows expired by packet time or live idle maintenance |
+| `flows_evicted`, `peak_active_flows` | Capacity retirement count and exact active-flow high-water |
 | `flows_flushed` | Remaining flows drained at shutdown, not mislabeled expired |
 | `flows_active` | Gauge; zero after successful pipeline flush |
 | `detections_fired` | Generated SecurityEvents, regardless of delivery outcome |
-| `events_emitted` | Successful sink submissions only |
-| `sink_failures` | Failed submissions/flushes |
+| `events_emitted` | Actual underlying sink acknowledgments, not queue admission |
+| `sink_failures` | Failed submissions/prepare/flush/admission; queued prior failures are not recounted by flush |
+| `queue_depth`, `queue_peak_depth`, `queue_overflows` | Pending events (not in-flight), peak pending and capacity-rejected events |
+| `packets_seen` | Raw live `ps_recv` or finite-source input count; check availability |
+| `packets_captured` | Actual runtime callbacks, aliasing received |
+| `capture_drops`, `interface_drops` | Separate raw `ps_drop` / `ps_ifdrop`; not parser rejects |
+| `capture_errors`, `capture_statistics_available` | Source failure count and explicit raw-counter availability |
+| `packets_unsupported`, `packets_truncated` | Rejected unsupported subset; truncated subset of malformed |
+| `packets_processed` | Pipeline ingests that completed successfully |
+| `detector_observations` | Admitted unique flow observations, not every packet |
+| `detector_state_sources`, `detector_state_observations` | Live source windows and retained counted IDs |
+| `detector_peak_sources`, `detector_peak_observations` | Exact detector-state high-water counts |
+| `detector_expired_sources`, `detector_state_rejections`, `detector_errors` | Expired windows, rejected admissions and evaluation/allocation errors |
+| `processing_seconds`, `processing_packets_per_second` | Packet callback time including synchronous sink work; completed packets / callback time |
+| `event_sink_seconds` | Actual underlying submit/flush time, not additional queued drain wait |
 | `runtime_seconds`, `pps`, `snapshot_time` | Steady-clock duration, derived rate, UTC snapshot timestamp |
 
-The drop ratio helper is an estimate using delivered + dropped counts; kernel
-filtering/direction/loopback counting makes it unsuitable as a wire-loss metric.
+Output aliases `events_generated` / `detections_generated` mean `detections_fired`;
+`event_sink_failures` means `sink_failures`. `packets_truncated` is already included
+in malformed/rejected, not an additional quantity to sum. The compatibility drop
+ratio helper uses delivered + dropped counts; kernel filtering/direction/loopback
+counting makes it unsuitable as a capture-loss or wire-loss metric.
 Runtime snapshots do not call libpcap from another thread. Capture publishes
 counters while draining batches and at shutdown. CLI summaries are measured,
 not precomputed. There is no Prometheus or HTTP metrics endpoint in this phase.
@@ -332,17 +434,13 @@ physical NIC, mirror-port, or network-wide throughput.
   stream reassembly or application-protocol inspection is added here.
 - Live snaplen truncation is rejected, even when enough header bytes remain for
   a partial interpretation. BPF filtering limits visibility intentionally.
-- Runtime is synchronous; slow event serialization/HTTP sinks can stall capture
-  and cause reported kernel drops. There is no asynchronous/durable spool.
+- Runtime parsing/detection is synchronous; default slow sinks can stall capture
+  and cause reported kernel drops. Optional bounded event delivery is not durable.
   The configurable capture buffer absorbs bounded bursts, not sustained overload;
   libpcap/OS determines the actual buffer layout and memory use.
-- Existing FlowTable expiration scans active flows on packet arrival. No idle
-  timer expiry is added; shutdown flushes remaining flows. Per-packet scanning
-  is sensitive to flow cardinality. FIN/RST flags are tracked but do not close
-  flows immediately in the current implementation.
-- The existing port-scan detector retains counted flow IDs/source windows until
-  reset; long-running/high-cardinality traffic can grow memory. Bounded detector
-  state and flow capacity are recommended hardening before unattended use.
+- Flow and detector state are bounded as documented above, but capacity eviction/
+  observation rejection reduces coverage. Large count limits are not a tight byte
+  budget. FIN/RST flags do not close flows immediately in the current implementation.
 - Detection counts distinct TCP ports by source, not confirmed malicious scans;
   loopback's same-address connections cannot trigger this detector. Validation
   intentionally uses two distinct loopback addresses. Clock/out-of-order input
@@ -357,11 +455,11 @@ physical NIC, mirror-port, or network-wide throughput.
   capture, physical-NIC performance or loss-free sustained operation.
 
 **Future, not implemented by this phase:** additional deterministic detectors,
-bounded detector/flow state, transport hardening, missing agents, LLM integration,
+durable/TLS transport and DNS-deadline hardening, missing agents, LLM integration,
 response/blocking, packet injection, new UI features, WebSockets/SSE, Prometheus,
 Kafka/Redis/Kubernetes/microservices and cloud deployment.
 
-Recommended next phase: keep the same boundaries and harden long-running
-resource bounds/flow expiry/detector window retention and trusted transport
-delivery, with high-cardinality soak tests and authorized NIC/mirror validation,
-before expanding detector or agent scope.
+Recommended next phase: keep the same boundaries; execute 30/60-minute soaks,
+establish buffered saturation and packet-latency evidence on an explicitly
+authorized NIC/mirror, size state/queue memory, and exercise sustained slow/failing
+ingestion and shutdown deadlines before expanding detector or agent scope.
