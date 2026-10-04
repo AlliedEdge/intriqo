@@ -4,6 +4,7 @@
 #include "intriqo/pipeline/pipeline_impl.hpp"
 #include "intriqo/runtime/engine_impl.hpp"
 #include "intriqo/transport/event_sink.hpp"
+#include "runtime_reporting.hpp"
 
 #include <atomic>
 #include <charconv>
@@ -22,6 +23,8 @@
 #include <string_view>
 #include <thread>
 #include <sys/resource.h>
+#include <algorithm>
+#include <vector>
 
 namespace {
 using namespace intriqo;
@@ -42,6 +45,9 @@ struct Options {
     std::string pcap_path;
     capture::SyntheticCaptureConfig input{100000, 1000};
     detection::PortScanConfig detector;
+    double flow_idle_timeout{60.0};
+    std::size_t max_active_flows{100000};
+    std::size_t sample_interval_ms{1000};
 };
 
 void usage() {
@@ -52,6 +58,15 @@ void usage() {
   --interface IFACE                  Passive live capture (requires Linux/libpcap)
   --filter EXPR                      Live BPF filter
   --duration-seconds SECONDS          Bounded live measurement (default 3; max 3600)
+  --capture-timeout-ms MS             Buffered live timeout (default 100)
+  --capture-immediate                 Use immediate capture instead of buffered
+  --capture-buffer-bytes BYTES         Capture buffer request (default 16777216)
+  --snaplen BYTES                     Captured byte limit (default 65535)
+  --sample-interval-ms MS             Periodic metrics/RSS samples (default 1000)
+  --flow-idle-timeout SECONDS           Flow timeout (default 60)
+  --max-active-flows N                 Flow capacity (default 100000)
+  --max-tracked-sources N              Source capacity (default 4096)
+  --max-tracked-observations N         Observation capacity (default 100000)
   --synthetic-packets COUNT           Positive packet count (default 100000)
   --synthetic-unique-ports COUNT       Ports 1..COUNT (1..65535; default 1000)
   --portscan-window SECONDS           Finite positive detection window (default 10)
@@ -117,6 +132,25 @@ Options parse_options(int argc, char** argv) {
         } else if (flag == "--duration-seconds") {
             options.duration_seconds = positive_seconds(value(), flag);
             if (options.duration_seconds > 3600) throw OptionError("live duration must not exceed 3600 seconds");
+        } else if (flag == "--capture-timeout-ms") {
+            options.live_config.timeout = std::chrono::milliseconds(positive_integer(value(), flag, 60000));
+        } else if (flag == "--capture-immediate") {
+            options.live_config.immediate = true;
+        } else if (flag == "--capture-buffer-bytes") {
+            options.live_config.buffer_size = static_cast<int>(positive_integer(value(), flag, std::numeric_limits<int>::max()));
+        } else if (flag == "--snaplen") {
+            options.live_config.snaplen = static_cast<int>(positive_integer(value(), flag, 16777216));
+        } else if (flag == "--sample-interval-ms") {
+            options.sample_interval_ms = positive_integer(value(), flag, 60000);
+            if (options.sample_interval_ms < 20) throw OptionError("sample interval must be at least 20 ms");
+        } else if (flag == "--flow-idle-timeout") {
+            options.flow_idle_timeout = positive_seconds(value(), flag);
+        } else if (flag == "--max-active-flows") {
+            options.max_active_flows = positive_integer(value(), flag);
+        } else if (flag == "--max-tracked-sources") {
+            options.detector.max_tracked_sources = positive_integer(value(), flag);
+        } else if (flag == "--max-tracked-observations") {
+            options.detector.max_tracked_observations = positive_integer(value(), flag);
         } else if (flag == "--synthetic-packets" || flag == "--synthetic-packet-count") {
             options.input.packet_count = positive_integer(value(), flag);
             options.synthetic_option_set = true;
@@ -220,6 +254,7 @@ struct Latency {
     double total_seconds{0.0};
     double minimum_seconds{std::numeric_limits<double>::infinity()};
     double maximum_seconds{0.0};
+    std::vector<double> first_samples; // bounded first 10000 event latencies, not packet samples
 
     void observe(const events::SecurityEvent& event, bool synthetic) {
         const auto now = Clock::now();
@@ -232,6 +267,7 @@ struct Latency {
             return;
         }
         ++samples;
+        if (first_samples.size() < 10000) first_samples.push_back(elapsed);
         total_seconds += elapsed;
         if (elapsed < minimum_seconds) minimum_seconds = elapsed;
         if (elapsed > maximum_seconds) maximum_seconds = elapsed;
@@ -271,11 +307,18 @@ void report(const Options& options, const metrics::EngineMetrics& metrics, doubl
               << " detector=port_scan registry=enabled sink=file output=/dev/null transport=included"
               << " portscan_window_seconds=" << options.detector.window_seconds
               << " portscan_unique_port_threshold=" << options.detector.unique_port_threshold
-              << " portscan_minimum_attempts=" << options.detector.minimum_attempts;
+              << " portscan_minimum_attempts=" << options.detector.minimum_attempts
+              << " flow_idle_timeout_seconds=" << options.flow_idle_timeout
+              << " max_active_flows=" << options.max_active_flows
+              << " max_tracked_sources=" << options.detector.max_tracked_sources
+              << " max_tracked_observations=" << options.detector.max_tracked_observations;
     if (options.synthetic)
         std::cout << " input_packet_count=" << options.input.packet_count
                   << " input_unique_ports=" << options.input.unique_ports;
-    if (options.live) std::cout << " duration_seconds=" << options.duration_seconds;
+    if (options.live) std::cout << " duration_seconds=" << options.duration_seconds
+        << " capture_timeout_ms=" << options.live_config.timeout.count()
+        << " capture_immediate=" << (options.live_config.immediate ? "true" : "false")
+        << " capture_buffer_bytes=" << options.live_config.buffer_size << " snaplen=" << options.live_config.snaplen;
     std::cout << '\n'
               << "counts packets_received=" << metrics.packets_received
               << " packets_parsed=" << metrics.packets_parsed
@@ -288,13 +331,16 @@ void report(const Options& options, const metrics::EngineMetrics& metrics, doubl
               << " flows_active=" << metrics.flows_active
               << " detections_fired=" << metrics.detections_fired
               << " events_emitted=" << metrics.events_emitted
-              << " sink_failures=" << metrics.sink_failures << '\n'
-              << "rates wall_seconds=" << wall_seconds
+              << " sink_failures=" << metrics.sink_failures;
+    tools::detailed_counters(std::cout, metrics);
+    std::cout << '\n' << "rates wall_seconds=" << wall_seconds
               << " engine_runtime_seconds=" << metrics.runtime_seconds
               << " packets_per_second=" << per_second(metrics.packets_received, wall_seconds)
               << " flows_per_second=" << per_second(metrics.flows_created, wall_seconds)
               << " events_per_second=" << per_second(metrics.events_emitted, wall_seconds)
               << " parsed_packets_per_second=" << per_second(metrics.packets_parsed, wall_seconds)
+              << " captured_packets_per_second=" << per_second(metrics.packets_captured, wall_seconds)
+              << " processed_packets_per_second=" << per_second(metrics.packets_processed, wall_seconds)
               << " parse_rate=" << (metrics.packets_received == 0 ? 0.0 :
                    static_cast<double>(metrics.packets_parsed) / static_cast<double>(metrics.packets_received)) << '\n';
     if (have_usage)
@@ -313,7 +359,14 @@ void report(const Options& options, const metrics::EngineMetrics& metrics, doubl
                   << " min_ms=" << latency.minimum_seconds * 1000.0
                   << " max_ms=" << latency.maximum_seconds * 1000.0;
     else std::cout << " mean_ms=N/A min_ms=N/A max_ms=N/A reason="
-                   << (options.pcap ? "offline-replay-timestamps" : "no-valid-event-timestamps");
+                    << (options.pcap ? "offline-replay-timestamps" : "no-valid-event-timestamps");
+    if (!latency.first_samples.empty()) {
+        auto sorted = latency.first_samples;
+        std::sort(sorted.begin(), sorted.end());
+        const auto index = static_cast<std::size_t>(std::ceil(0.99 * static_cast<double>(sorted.size()))) - 1;
+        std::cout << " p99_ms=" << sorted[index] * 1000.0 << " p99_scope=first-bounded-event-samples"
+                  << " p99_samples=" << sorted.size();
+    } else std::cout << " p99_ms=N/A";
     std::cout << '\n';
 }
 
@@ -324,7 +377,7 @@ int run(const Options& options) {
     else capture = std::make_unique<capture::PcapReplaySource>(capture::PcapReplayConfig{options.pcap_path, false});
     auto registry = std::make_unique<detection::DetectorRegistry>();
     registry->add(std::make_unique<detection::PortScanDetector>(options.detector));
-    auto pipeline = std::make_unique<pipeline::PipelineImpl>(std::move(registry), Duration{60.0});
+    auto pipeline = std::make_unique<pipeline::PipelineImpl>(std::move(registry), Duration{options.flow_idle_timeout}, options.max_active_flows);
     auto sink = std::make_unique<transport::FileEventSink>("/dev/null");
     runtime::EngineImpl engine(std::move(capture), std::move(pipeline), std::move(sink));
     Latency latency;
@@ -343,6 +396,19 @@ int run(const Options& options) {
     rusage after{};
     const bool have_before = getrusage(RUSAGE_SELF, &before) == 0;
     const auto start = std::chrono::steady_clock::now();
+    std::mutex sample_mutex;
+    std::condition_variable_any sample_wake;
+    std::jthread sampler([&](std::stop_token stop) {
+        std::unique_lock lock(sample_mutex);
+        while (!stop.stop_requested()) {
+            sample_wake.wait_for(lock, stop, std::chrono::milliseconds(options.sample_interval_ms), [] { return false; });
+            if (stop.stop_requested()) break;
+            const auto snapshot = engine.metrics();
+            std::cout << "sample runtime_seconds=" << snapshot.runtime_seconds << " rss_kib=" << resident_rss_kib();
+            tools::detailed_counters(std::cout, snapshot);
+            std::cout << '\n' << std::flush;
+        }
+    });
     bool failed = false;
     try {
         signals.before_run();
@@ -354,6 +420,8 @@ int run(const Options& options) {
     }
     const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     const bool have_after = getrusage(RUSAGE_SELF, &after) == 0;
+    sampler.request_stop();
+    sampler.join();
     const auto metrics = engine.metrics();
     failed = failed || metrics.sink_failures != 0;
     report(options, metrics, elapsed, before, after, have_before && have_after, latency, failed);

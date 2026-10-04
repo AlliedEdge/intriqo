@@ -28,6 +28,7 @@ target_sources(intriqo_engine_lib
         src/detection/port_scan_detector.cpp
         src/pipeline/pipeline_impl.cpp
         src/transport/event_sink.cpp
+        src/transport/queued_event_sink.cpp
         src/capture/pcap_source.cpp
         src/capture/synthetic_source.cpp
         src/capture/live_source.cpp
@@ -43,6 +44,8 @@ add_executable(intriqo-engine tools/engine_main.cpp)
 target_link_libraries(intriqo-engine PRIVATE intriqo_engine_lib)
 add_executable(intriqo-runtime-benchmark tools/benchmark_runtime.cpp)
 target_link_libraries(intriqo-runtime-benchmark PRIVATE intriqo_engine_lib)
+add_executable(intriqo-state-soak tools/state_soak.cpp)
+target_link_libraries(intriqo-state-soak PRIVATE intriqo_engine_lib)
 
 add_executable(intriqo_port_scan_demo tools/port_scan_demo.cpp)
 target_link_libraries(intriqo_port_scan_demo PRIVATE intriqo_engine_lib)
