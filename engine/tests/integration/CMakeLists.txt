@@ -21,3 +21,11 @@ gtest_discover_tests(test_runtime)
 add_executable(test_capture test_capture.cpp)
 target_link_libraries(test_capture PRIVATE intriqo_engine_lib GTest::gtest_main)
 gtest_discover_tests(test_capture)
+
+add_executable(test_hardening test_hardening.cpp)
+target_link_libraries(test_hardening PRIVATE intriqo_engine_lib GTest::gtest_main)
+gtest_discover_tests(test_hardening)
+
+add_executable(test_queued_delivery test_queued_delivery.cpp)
+target_link_libraries(test_queued_delivery PRIVATE intriqo_engine_lib GTest::gtest_main)
+gtest_discover_tests(test_queued_delivery)

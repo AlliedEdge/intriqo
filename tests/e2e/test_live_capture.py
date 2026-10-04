@@ -47,7 +47,8 @@ def local_listeners():
 
 @pytest.mark.skipif(os.environ.get("INTRIQO_RUN_LIVE_TEST") != "1", reason="opt-in CAP_NET_RAW/local PostgreSQL validation")
 @pytest.mark.parametrize("shutdown_signal", [signal.SIGINT, signal.SIGTERM])
-def test_live_loopback_to_postgres(shutdown_signal, capsys):
+@pytest.mark.parametrize("delivery_queue_capacity", [0, 256])
+def test_live_loopback_to_postgres(shutdown_signal, delivery_queue_capacity, capsys):
     assert sys.platform == "linux"
     assert ENGINE.is_file(), "build intriqo-engine first"
     env = os.environ | {"PYTHONPATH": str(CONTROL / "src")}
@@ -84,6 +85,8 @@ def test_live_loopback_to_postgres(shutdown_signal, capsys):
             first, listeners = local_listeners()
             capture_filter = f"tcp and src host 127.0.0.1 and dst host 127.0.0.2 and dst portrange {first}-{first+9}"
             args = ["--interface", "lo", "--no-promiscuous", "--filter", capture_filter, "--sink", "http"]
+            if delivery_queue_capacity:
+                args += ["--event-queue-capacity", str(delivery_queue_capacity)]
             engine_env = env | {"INTRIQO_CONTROL_PLANE_URL": base, "INTRIQO_CONTROL_PLANE_TOKEN": token,
                                 "INTRIQO_CONTROL_PLANE_ENDPOINT": "/api/v1/events"}
             image = os.environ.get("INTRIQO_LIVE_DOCKER_IMAGE")
@@ -113,7 +116,9 @@ def test_live_loopback_to_postgres(shutdown_signal, capsys):
                             break
                         output += chunk
             assert b"capture_ready=true" in output, "live source failed to initialize (check libpcap/CAP_NET_RAW)"
-            started = datetime.now(timezone.utc).isoformat()
+            # SecurityEvent v1 serializes milliseconds. A microsecond lower bound
+            # can exclude this run's fast loopback event within the same millisecond.
+            started = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
             for port in range(first, first + 10):
                 with socket.socket() as connection:
                     connection.settimeout(2)
@@ -128,6 +133,16 @@ def test_live_loopback_to_postgres(shutdown_signal, capsys):
                     event = response.json()["items"][0]
                     break
                 time.sleep(0.05)
+            if event is None:
+                # Preserve engine counters on failure, without logging test credentials.
+                if container:
+                    subprocess.run(["docker", "kill", "--signal", "TERM", container],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10, check=False)
+                elif engine.poll() is None:
+                    engine.send_signal(signal.SIGTERM)
+                tail, errors = engine.communicate(timeout=10)
+                diagnostic = (output + tail + errors).decode(errors="replace").replace(token, "<redacted>")
+                pytest.fail(f"local live traffic did not persist a PORT_SCAN event (from_time={started}); " + diagnostic)
             assert event is not None, "local live traffic did not persist a PORT_SCAN event"
             assert client.get(f"/api/v1/events/{event['event_id']}", headers=headers).status_code == 200
             sys.path.insert(0, str(CONTROL / "src"))
@@ -147,9 +162,11 @@ def test_live_loopback_to_postgres(shutdown_signal, capsys):
             output += tail
             assert engine.returncode == 0, "live engine did not exit cleanly"
             assert b"flows_active=0" in output and b"sink_failures=0" in output
+            assert b"events_emitted=1" in output and b"queue_depth=0" in output
+            assert b"queue_overflows=0" in output
             assert token.encode() not in output + errors
             with capsys.disabled():
-                print(f"live validation signal={shutdown_signal.name} API/PostgreSQL/audit=verified")
+                print(f"live validation signal={shutdown_signal.name} queue_capacity={delivery_queue_capacity} API/PostgreSQL/audit=verified")
                 print(output.decode().strip())
     finally:
         if container:

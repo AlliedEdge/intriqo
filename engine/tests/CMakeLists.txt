@@ -32,4 +32,10 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME RuntimeCLI COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/test_cli.py $<TARGET_FILE:intriqo-engine>)
     set_tests_properties(RuntimeCLI PROPERTIES TIMEOUT 30)
+    add_test(NAME ReliabilityHarness COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/benchmark/test_reliability.py)
 endif()
+add_test(NAME StateSoakShort COMMAND intriqo-state-soak --duration-seconds 1
+    --rate 10000 --max-active-flows 64 --max-tracked-sources 8
+    --max-tracked-observations 32 --flow-idle-timeout 1 --sample-interval-ms 100)
+set_tests_properties(StateSoakShort PROPERTIES TIMEOUT 15)
