@@ -372,3 +372,177 @@ configuration/counter meaning, preserved historical/failed evidence, all new
 versioned result paths, actual CPU/RSS/drop figures and 5/30/60-minute procedures.
 Only five-minute durations were run. Plain HTTP/DNS/shutdown constraints,
 physical-NIC validation, packet P99 and prolonged capacity testing remain open.
+
+## 17. SYN flood detector phase (2026-10-04)
+
+This section is the current phase report. It supersedes neither the historical
+runtime numbers above nor the existing capture-hardening evidence. The changes
+remain inside the existing C++ path:
+
+`Capture → parser → FlowTable/FlowFeatures → DetectorRegistry →
+PortScanDetector + SynFloodDetector → SecurityEvent v1 → existing sink`.
+
+### Files added
+
+- `engine/include/intriqo/detection/syn_flood_detector.hpp`
+- `engine/src/detection/syn_flood_detector.cpp`
+- `engine/tests/unit/test_syn_flood_detector.cpp`
+- `engine/tests/fixtures/syn_flood_fixture.py`
+- `scripts/benchmark/syn_flood_validation.py`
+- `scripts/benchmark/syn_flood_benchmark.py`
+- `tests/e2e/test_syn_flood_live.py`
+
+### Files modified
+
+- `engine/CMakeLists.txt`
+- `engine/include/intriqo/detection/detector.hpp`
+- `engine/include/intriqo/detection/detector_registry.hpp` (statistics aggregation only)
+- `engine/src/detection/detector_registry.cpp`
+- `engine/include/intriqo/flow/flow.hpp`
+- `engine/src/flow/flow_table.cpp`
+- `engine/include/intriqo/features/features.hpp`
+- `engine/src/features/extractor.cpp`
+- `engine/include/intriqo/events/security_event.hpp`
+- `engine/src/events/security_event.cpp`
+- `engine/include/intriqo/metrics/metrics.hpp`
+- `engine/src/runtime/engine_impl.cpp`
+- `engine/tools/engine_main.cpp`
+- `engine/tools/benchmark_runtime.cpp`
+- `engine/tools/runtime_reporting.hpp`
+- `engine/tests/unit/CMakeLists.txt`
+- `engine/tests/unit/test_flow.cpp`
+- `engine/tests/integration/test_pipeline.cpp`
+- `docs/engine/ids-engine.md`
+
+No EngineImpl, LiveCaptureSource, FlowTable lifecycle architecture, Control
+Plane, agent, or React frontend architecture was rewritten. No new runtime
+dependency was added.
+
+### Implemented model and bounds
+
+The detector counts distinct initial SYN flow identities (SYN without ACK), not
+raw packets. It groups observations by source IPv4, destination IPv4, and
+destination port in a fixed event-time window. FlowTable records ordered
+handshake metadata: the first packet must be an initial SYN, a reverse SYN-ACK
+must be observed, and a later forward non-SYN ACK must be observed before that
+flow is considered complete. The metadata deliberately does not claim TCP
+sequence-number validation or recover packets missed by capture. Detection
+requires minimum attempts, minimum observed rate, minimum incomplete count, and
+minimum incomplete ratio. Defaults are 10 seconds, 100 attempts, 50 attempts/s,
+0.90 ratio, 50 incomplete handshakes, HIGH severity, 1-second minimum
+observation span, and 10 seconds cooldown.
+
+Active bucket/cooldown state is bounded by `--synflood-max-buckets` (default
+4096); retained flow identities are bounded by `--synflood-max-flows` (default
+100000). Ordered indexes expire buckets beyond the observation window and direct
+detector flow identities beyond `--synflood-state-expiration` (default 60 s).
+Pipeline retirement removes identities earlier. Capacity misses are rejected and
+counted rather than silently evicting admitted evidence. Evaluation, expiration,
+statistics, retirement, and reset are mutex-protected. The generic detector
+statistics now also expose SYN observations, SYN-ACK observations, completed
+handshakes, current incomplete handshakes, expired observations, and state
+evictions (zero for this rejection-based detector).
+
+One event is emitted per bucket/window. The cooldown index suppresses a new
+bucket for the same key after an alert; it prevents duplicate event explosion
+without changing the existing SecurityEvent v1 envelope. The event details are
+structured and include `initial_syn_attempts`, `syn_ack_count`,
+`completed_handshakes`, `incomplete_handshakes`, `incomplete_ratio`,
+`rate_per_second`, `window_seconds`, `destination_port`, and `detector`.
+
+### Correctness tests
+
+The new unit suite contains **18 SynFloodDetector cases**, plus **7 FlowTable /
+FlowFeatures handshake-metadata cases**, covering completed
+handshakes, small bursts, sustained/high-rate attempts, incomplete-ratio
+thresholding, source/destination isolation, expiration, capacity bounds,
+cooldown and duplicate suppression, SYN-ACK-only input, deterministic event
+evidence/statistics, reset/retirement, malformed/default inputs, and concurrent
+evaluation/snapshots. The registry/pipeline integration case exercises parsed
+initial SYNs through the normal detector path. The release/libpcap,
+release/no-libpcap, and ASan/UBSan builds each reported **104/104 CTest entries
+passed**, including the pre-existing PortScan and runtime/hardening suites.
+These are correctness and regression results, not a real-world accuracy
+measurement.
+
+### Controlled PCAP experiment
+
+`engine/tests/fixtures/syn_flood_fixture.py` and
+`scripts/benchmark/syn_flood_validation.py` generated a 120-packet,
+documentation-address TCP SYN scenario with distinct source ports and no
+SYN-ACK/ACK responses, plus a 30-flow completed-handshake scenario and a
+19-flow below-threshold control. The normal executable was run with thresholds
+lowered only for this controlled fixture:
+
+```text
+python3 scripts/benchmark/syn_flood_validation.py \
+  --engine build/syn-release/engine/intriqo-engine \
+  --output /tmp/opencode/syn_flood_validation.json
+```
+
+Measured result: the flood scenario received/parsed **120/120** packets, had
+zero malformed/rejected/dropped packets, flushed 120 flows, emitted **one
+SYN_FLOOD** event, and had zero sink failures. The completed-handshake scenario
+received 90/90 packets and emitted no event; its statistics recorded 30
+SYN-ACK observations and 30 completed handshakes. The 19-flow control emitted
+no event. This is an authorized synthetic PCAP detection experiment, not an
+attack-dataset benchmark.
+
+### Matched performance experiment
+
+The Release standalone benchmark used the same 1,000,000 synthetic and PCAP
+Ethernet/IPv4/TCP SYN inputs, 1,000 flow cardinality, `/dev/null` file sink, and
+five matched runs per configuration. Baseline registered PortScanDetector only;
+candidate registered PortScanDetector plus SynFloodDetector with production
+defaults. The measured raw runs were:
+
+| Input / configuration | Median packets/s | Median flows/s | Median events/s | Median wall s | Median CPU % | Median max RSS KiB | Peak detector sources / observations |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Synthetic / PortScan only | 1,915,628 | 1,916 | 1.916 | 0.522022 | 100.116 | 91,552 | 1 / 1,000 |
+| Synthetic / PortScan + SYN flood | 1,588,374 | 1,588 | 1.588 | 0.629575 | 100.096 | 91,552 | 1,001 / 2,000 |
+| PCAP / PortScan only | 1,894,097 | 1,894 | 1.894 | 0.527956 | 100.124 | 91,552 | 1 / 1,000 |
+| PCAP / PortScan + SYN flood | 1,595,784 | 1,596 | 1.596 | 0.626651 | 100.124 | 91,552 | 1,001 / 2,000 |
+
+The measured packet-rate reduction was **17.08% synthetic** and **15.75% PCAP**.
+Both configurations emitted one PortScan event; the SYN detector did not alert
+because the benchmark workload spread one flow across each destination port.
+Post-flush RSS medians were **6,448/6,756 KiB synthetic** and
+**6,496/6,764 KiB PCAP** (baseline/candidate). These numbers measure this
+implementation and fixture only; they are not line-rate, NIC, or general
+production performance claims. Raw redacted results are written by
+`scripts/benchmark/syn_flood_benchmark.py` to the ignored benchmark-results
+directory.
+
+### Live validation status and false-positive scope
+
+The opt-in live test was executed twice with the libpcap-enabled Release binary,
+once for SIGINT and once for SIGTERM, using the authorized NET_RAW Docker
+launcher and local FastAPI/PostgreSQL. It sent 120 loopback-only raw SYNs over
+1.5 seconds; libpcap delivered 240 parsed packets (loopback direction copies),
+with 120 flows, zero reported drops/rejections, one persisted SYN_FLOOD event,
+one acknowledged HTTP event, zero sink failures, peak detector sources 2 and
+peak observations 240. The event used 81 observed attempts, 81 incomplete
+handshakes, ratio 1.0, and observed rate about 80.32/s because the closed-port
+loopback workload produced 81 visible initial SYNs before shutdown. Both
+signals returned exit code 0 and drained flows/queue. No public or campus
+target was used. Legitimate completed-handshake and small-burst scenarios passed
+the deterministic tests; no false-positive rate is claimed because no defined
+real-traffic dataset was evaluated.
+
+The same live run's local FastAPI/PostgreSQL setup exposed a pre-existing
+development-database caveat: a non-test `alex_morgan` email-verification token
+caused the account-recovery test's unscoped `scalar_one()` query to see multiple
+rows. The detector work did not modify Control Plane code or delete that user.
+With explicit test environment overrides (`APP_ENV=test`,
+`REQUIRE_EMAIL_VERIFICATION=false`) the existing vertical-slice E2E passed
+**1/1**. A full Control Plane pytest attempt otherwise reported **130 passed,
+1 failed** for that pre-existing database-state issue; this is not claimed as a
+new detector regression.
+
+### Limitations and future work
+
+**Implemented:** the observable IPv4 half-open SYN pattern above, bounded
+event-time state, configurable thresholds, structured SecurityEvent v1 evidence,
+cooldown, and registry integration. **Not implemented:** IPv6, TCP stream
+reassembly, packet-loss compensation, spoofing attribution, distributed/global
+cross-source correlation, response/blocking, ML/LLM, or any additional detector.

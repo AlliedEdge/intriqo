@@ -8,9 +8,10 @@ The C++20 IDS executable `intriqo-engine` passively captures packets, parses
 IPv4/TCP/UDP/ICMP, rejects malformed/truncated input, tracks bidirectional flows,
 extracts flow features, invokes registered deterministic detectors, serializes
 SecurityEvent v1 JSON (UUID v4 IDs, UTC timestamps), and sends events to a file
-or the existing authenticated FastAPI ingestion endpoint. `PortScanDetector`
-is the only concrete detector enabled in this phase. No packet injection or
-response/blocking action is implemented.
+or the existing authenticated FastAPI ingestion endpoint. The registry enables
+the existing `PortScanDetector` and the bounded `SynFloodDetector` by default;
+the latter is configurable or can be disabled at the CLI. No packet injection
+or response/blocking action is implemented.
 
 Live Linux, classic PCAP replay, and synthetic capture all use the same runtime,
 parser, pipeline, registry, and sink path. Synthetic input is finite reproducible
@@ -29,7 +30,7 @@ Authorized live traffic / classic PCAP / synthetic packets
                         ↓
              FlowFeatures::from_flow
                         ↓
-       DetectorRegistry → PortScanDetector
+        DetectorRegistry → PortScanDetector + SynFloodDetector
                         ↓
                 SecurityEvent v1
                         ↓
@@ -157,6 +158,17 @@ Promiscuous mode is not a substitute for an appropriate traffic source.
 | `--portscan-window SECONDS` | 10, finite and positive |
 | `--portscan-unique-port-threshold N` | 10, range 1..65535 |
 | `--portscan-minimum-attempts N` | 10, positive |
+| `--disable-syn-flood` | Disable SYN flood detection; enabled by default |
+| `--synflood-window SECONDS` | 10, fixed event-time window |
+| `--synflood-minimum-observation SECONDS` | 1, minimum elapsed evidence span before rate evaluation |
+| `--synflood-minimum-attempts N` | 100 distinct initial-SYN flow identities |
+| `--synflood-minimum-rate RATE` | 50 initial SYNs per second |
+| `--synflood-incomplete-ratio RATIO` | 0.90, range 0..1 |
+| `--synflood-minimum-incomplete N` | 50 incomplete handshakes |
+| `--synflood-cooldown SECONDS` | 10, duplicate-alert suppression |
+| `--synflood-max-buckets N` | 4096 source/destination/service buckets |
+| `--synflood-max-flows N` | 100000 retained flow identities |
+| `--synflood-state-expiration SECONDS` | 60, direct-detector identity expiry |
 | `--synthetic-packets N` | 10, positive CLI count (library permits empty input) |
 | `--synthetic-unique-ports N` | 10, range 1..65535 |
 | `--log-level error\|info\|debug` | `info`; errors always reported, `debug` adds runtime diagnostic; required startup/shutdown summaries remain visible at all levels |
@@ -193,6 +205,8 @@ Service identity/RBAC/authentication are unchanged.
 ```cpp
 auto registry = std::make_unique<intriqo::detection::DetectorRegistry>();
 registry->add(std::make_unique<intriqo::detection::PortScanDetector>(config));
+if (syn_flood_enabled)
+    registry->add(std::make_unique<intriqo::detection::SynFloodDetector>(syn_config));
 auto pipeline = std::make_unique<intriqo::pipeline::PipelineImpl>(std::move(registry));
 ```
 
@@ -204,10 +218,45 @@ interface and be registered without changing capture or runtime.
 
 The existing port-scan detector counts distinct TCP destination ports and flow
 attempts per source address within its window, suppressing duplicate flow IDs
-and emitting once per source/window. It is not SYN-only or an attack attribution
-system; benign connection activity can meet its thresholds. Severity stays HIGH
-by default. Changing the threshold/window/minimum-attempts is supported; this
-phase does not introduce new detectors or detection algorithms.
+and emitting once per source/window. Its behavior and defaults are unchanged.
+
+### SYN flood detector (implemented)
+
+`SynFloodDetector` uses the same flow observations and registry contract; it does
+not count a global packet total. `FlowTable` records additive TCP evidence for
+initial SYN (SYN without ACK), SYN-ACK, and non-SYN ACK packets, plus ordered
+handshake metadata. The first packet must be a forward initial SYN; a reverse
+SYN-ACK and then a forward non-SYN ACK mark completion. The detector admits each
+initial-SYN flow identity once and groups it by
+`source_address + destination_address + destination_port` in a fixed event-time
+window. A bucket is eligible only when all configured conditions hold:
+
+1. distinct initial-SYN attempts reach `minimum_attempts`;
+2. attempts divided by observed elapsed time reach `minimum_rate_per_second`;
+3. at least `minimum_incomplete_handshakes` attempts remain incomplete; and
+4. `incomplete_handshakes / attempts` reaches `incomplete_ratio_threshold`.
+
+A handshake is counted complete only when both SYN-ACK and a later/observed
+non-SYN ACK are visible for the same retained flow. An ACK without observed
+SYN-ACK is not treated as proof of completion, and a SYN-ACK-first/midstream
+flow is not counted as an initial attempt. This is ordering evidence, not TCP
+sequence-number validation. Consequently, this detector identifies only the
+observable half-open pattern; it cannot infer packets lost before capture,
+traffic outside the selected interface/filter, spoofing intent, or distributed
+attacks that do not create enough evidence in one bucket.
+
+Defaults are intentionally conservative for a 10-second window: 100 distinct
+attempts, 50 attempts/s, 50 incomplete handshakes, a 0.90 incomplete ratio,
+and a 1-second minimum observation span. The minimum span prevents a same-
+timestamp startup burst from being represented as an infinite rate; it is an
+operational guard, not a measured accuracy calibration.
+They are starting operational thresholds, not a measured false-positive rate.
+Each bucket emits at most one event. The cooldown index suppresses a fresh
+bucket for the same key after an alert, and fixed-window expiration permits a
+later independent alert after the cooldown. Generated details include the
+attempt count, SYN-ACK count, completed/incomplete counts, ratio, observed rate,
+window, destination port, threshold evidence, and `detector: syn_flood` without
+changing SecurityEvent v1.
 
 ## Capture Reliability and State Management
 
@@ -233,6 +282,17 @@ Late packets within existing windows remain eligible; stale new-source windows
 are rejected against a monotonic watermark. Threshold meaning and one event per
 source/window remain unchanged. Size limits for the real workload; many sources
 times many unique ports can still require substantial memory.
+
+SYN-flood buckets use the same event-time/ordered-index pattern, with at most
+`max_tracked_buckets` active bucket and cooldown records combined and at most
+`max_tracked_flows` retained flow identities. A bucket expires strictly beyond
+`synflood-window`; a flow identity expires after `synflood-state-expiration` if
+the caller never retires it. Capacity pressure rejects new buckets/identities,
+increments `state_rejections`, and preserves already admitted state. There is no
+unbounded global counter and no full detector-table scan per packet. The
+detector's synchronized statistics expose initial-SYN observations, SYN-ACK
+observations, completed handshakes, current incomplete handshakes, active/peak
+state, expirations, rejections, and allocation errors.
 
 ### Capture versus processing versus delivery
 
@@ -385,7 +445,7 @@ never point the regression suite at a production database.
 Keep `intriqo_engine_benchmark` for continuity: it consumes already-parsed packets,
 so it is not a raw capture/parser throughput measurement. The new
 `intriqo-runtime-benchmark` measures CaptureSource → parser → flows → feature
-extraction → registry → real PortScanDetector → JSON serialization and real
+extraction → registry → real deterministic detectors → JSON serialization and real
 `FileEventSink(/dev/null)`. HTTP/PostgreSQL latency is not included in its offline
 throughput results. It reports actual packet/flow/event rates, parse fraction,
 rejections/drops/sink failures, steady-clock wall time, CPU user/system seconds,
@@ -409,6 +469,12 @@ python3 scripts/benchmark/runtime_benchmark.py --build build/runtime-release \
   --live --docker-image ubuntu:26.04
 ```
 
+For the matched detector comparison, run the same synthetic or authorized PCAP
+input once without `--with-syn-flood` (PortScanDetector baseline) and once with
+it (two-detector candidate), using the same build, packet count, flow
+cardinality, sink, and detector settings. The candidate flag is implemented in
+`intriqo-runtime-benchmark`; it does not change the production CLI defaults.
+
 The driver refuses non-Release builds, records CPU model, RAM, OS/kernel,
 compiler/version, build type, git commit and dirty flag, input packet/port counts,
 PCAP SHA256, detector configuration, CPU affinity and UTC time. Results default
@@ -424,6 +490,22 @@ scopes explicitly. Neither is a heap-only profiler. Use comparable builds,
 input/flow cardinality, filters, sink and detector settings across runs. Record
 load/variance and observed drops; do not generalize a small loopback workload to
 physical NIC, mirror-port, or network-wide throughput.
+
+### SYN flood detector benchmark result (measured)
+
+On 2026-10-04, three matched 100,000-packet synthetic runs produced these
+medians on the shared developer host. The baseline registered only
+`PortScanDetector`; the candidate registered both detectors using production
+defaults and the same `/dev/null` sink.
+
+| Registry | packets/s | flows/s | events/s | wall s | max RSS KiB | post-flush RSS KiB |
+|---|---:|---:|---:|---:|---:|---:|
+| Port scan only | 177,733 | 1,777 | 1.777 | 0.562641 | 5,168 | 5,596 |
+| Port scan + SYN flood | 63,616 | 636 | 0.636 | 1.571930 | 5,292 | 5,824 |
+
+The measured candidate packet-rate overhead was **64.21%** for this workload.
+The workload spread one flow across each destination port, so the SYN detector
+did not emit; this is a cost measurement, not a detection-accuracy claim.
 
 ## Known limitations and future work
 
