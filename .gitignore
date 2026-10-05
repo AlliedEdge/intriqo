@@ -130,6 +130,7 @@ ml/models/*.safetensors
 !ml/models/.gitkeep
 
 # Experiment outputs and generated datasets
+ml/artifacts/
 ml/experiments/*/output/
 ml/experiments/*/artifacts/
 ml/datasets/raw/*.csv

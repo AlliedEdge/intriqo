@@ -84,6 +84,8 @@ The full documentation is split into focused pages. Click any section to go stra
 |---|---|
 | [C++ IDS Engine](docs/engine/ids-engine.md) | Subsystems, pipeline, detection approach, why C++ |
 | [Capture Hardening Validation](docs/engine/capture-hardening-validation.md) | State policies, five-minute soaks, actual losses and versioned comparisons |
+| [FlowFeatureRecord v1](docs/engine/flow-feature-contract.md) | Versioned flow measurements, bounded JSONL sink, strict Python consumer; no ML model |
+| [Feature Boundary Validation](docs/engine/flow-feature-validation.md) | Actual regression, end-to-end, performance and memory results |
 
 ### 🛡 Security
 
