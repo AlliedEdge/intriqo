@@ -338,6 +338,20 @@ observed baseline/immediate/synchronous-HTTP losses and remaining gaps.
 
 ## Event sinks
 
+### Independent optional flow-feature stream
+
+`--feature-output PATH` enables versioned `flow_features.v1` JSONL at idle expiry,
+capacity eviction and shutdown flush, **not** per packet. FIN/RST retirement
+semantics and deterministic detectors are unchanged. A preallocated bounded
+worker queue (`--feature-queue-capacity 1..65536`, default 4096) keeps serialization
+and local file writes off packet processing. Overflow drops newest; separate
+feature counters/warnings expose loss without stopping the deterministic IDS.
+Python is a downstream validator only and is never an engine dependency.
+No training, inference, scoring or model is implemented. See the complete
+[contract](flow-feature-contract.md) and [measured validation](flow-feature-validation.md).
+
+### SecurityEvent delivery
+
 - **File:** append JSONL, synchronously serialize/write/flush/close each event.
   Errors opening/writing/flushing are counted and reported.
 - **HTTP:** synchronous POST of unchanged SecurityEvent v1 JSON to the existing
