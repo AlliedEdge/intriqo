@@ -29,3 +29,15 @@ gtest_discover_tests(test_hardening)
 add_executable(test_queued_delivery test_queued_delivery.cpp)
 target_link_libraries(test_queued_delivery PRIVATE intriqo_engine_lib GTest::gtest_main)
 gtest_discover_tests(test_queued_delivery)
+
+add_executable(test_flow_feature_sink test_flow_feature_sink.cpp)
+target_link_libraries(test_flow_feature_sink PRIVATE intriqo_engine_lib GTest::gtest_main)
+gtest_discover_tests(test_flow_feature_sink)
+
+add_executable(test_flow_feature_pipeline test_flow_feature_pipeline.cpp)
+target_link_libraries(test_flow_feature_pipeline PRIVATE intriqo_engine_lib GTest::gtest_main)
+gtest_discover_tests(test_flow_feature_pipeline)
+
+add_executable(test_flow_feature_lifecycle test_flow_feature_lifecycle.cpp)
+target_link_libraries(test_flow_feature_lifecycle PRIVATE intriqo_engine_lib GTest::gtest_main)
+gtest_discover_tests(test_flow_feature_lifecycle)

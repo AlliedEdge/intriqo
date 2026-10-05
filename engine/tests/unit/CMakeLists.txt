@@ -32,6 +32,14 @@ target_link_libraries(test_features PRIVATE intriqo_engine_lib GTest::gtest_main
 target_include_directories(test_features PRIVATE ${PROJECT_SOURCE_DIR}/include)
 gtest_discover_tests(test_features)
 
+add_executable(test_flow_feature_record test_flow_feature_record.cpp)
+target_link_libraries(test_flow_feature_record PRIVATE intriqo_engine_lib GTest::gtest_main)
+gtest_discover_tests(test_flow_feature_record)
+
+add_executable(test_flow_feature_record_v2 test_flow_feature_record_v2.cpp)
+target_link_libraries(test_flow_feature_record_v2 PRIVATE intriqo_engine_lib GTest::gtest_main)
+gtest_discover_tests(test_flow_feature_record_v2)
+
 # ── security events ───────────────────────────────────────────────────────────
 add_executable(test_events
     test_security_event.cpp

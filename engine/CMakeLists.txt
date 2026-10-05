@@ -23,13 +23,17 @@ target_sources(intriqo_engine_lib
         src/common/types.cpp
         src/packet/parser.cpp
         src/flow/flow_table.cpp
+        src/flow/iat.cpp
         src/features/extractor.cpp
+        src/features/flow_feature_record.cpp
+        src/features/flow_feature_record_v2.cpp
         src/events/security_event.cpp
         src/detection/port_scan_detector.cpp
         src/detection/syn_flood_detector.cpp
         src/pipeline/pipeline_impl.cpp
         src/transport/event_sink.cpp
         src/transport/queued_event_sink.cpp
+        src/transport/flow_feature_sink.cpp
         src/capture/pcap_source.cpp
         src/capture/synthetic_source.cpp
         src/capture/live_source.cpp

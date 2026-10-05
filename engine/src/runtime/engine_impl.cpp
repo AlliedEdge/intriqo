@@ -60,6 +60,11 @@ void apply_pipeline_statistics(metrics::EngineMetrics& counters,
     counters.detector_ack_completions = detection.ack_completions;
     counters.detector_incomplete_handshakes = detection.incomplete_handshakes;
     counters.detector_errors = detection.errors;
+    counters.feature_records_generated = statistics.feature_records_generated;
+    counters.feature_generation_failures = statistics.feature_generation_failures;
+    counters.feature_setup_failures = statistics.feature_setup_failures;
+    counters.feature_generation_seconds = statistics.feature_generation_seconds;
+    counters.feature_stream = statistics.feature_stream;
 }
 
 void apply_capture_statistics(metrics::EngineMetrics& counters,

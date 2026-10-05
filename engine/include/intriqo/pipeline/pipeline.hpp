@@ -4,6 +4,7 @@
 #include "intriqo/flow/flow.hpp"
 #include "intriqo/events/security_event.hpp"
 #include "intriqo/detection/detector.hpp"
+#include "intriqo/transport/flow_feature_sink.hpp"
 #include <functional>
 #include <vector>
 
@@ -17,6 +18,11 @@ struct PipelineStatistics {
     std::uint64_t flows_evicted{0};
     std::uint64_t peak_active_flows{0};
     detection::DetectorStatistics detection;
+    std::uint64_t feature_records_generated{0};
+    std::uint64_t feature_generation_failures{0};
+    std::uint64_t feature_setup_failures{0};
+    double feature_generation_seconds{0.0};
+    transport::FlowFeatureSinkStatistics feature_stream;
 };
 
 /// Callback invoked for every SecurityEvent the pipeline produces.

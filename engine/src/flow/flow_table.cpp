@@ -27,8 +27,8 @@ std::size_t FlowTable::KeyHash::operator()(const FlowKey& key) const noexcept {
     return hash * 131 + static_cast<unsigned>(key.protocol);
 }
 
-FlowTable::FlowTable(Duration timeout, std::size_t max_flows)
-    : idle_timeout_(timeout), max_flows_(max_flows) {
+FlowTable::FlowTable(Duration timeout, std::size_t max_flows, bool measure_iat)
+    : idle_timeout_(timeout), max_flows_(max_flows), measure_iat_(measure_iat) {
     if (!std::isfinite(timeout.count()) || timeout.count() <= 0.0)
         throw std::invalid_argument("flow idle timeout must be finite and positive");
     if (max_flows == 0)
@@ -56,6 +56,7 @@ FlowUpdate FlowTable::update(const packet::ParsedPacket& packet) {
         flow.flow_id = next_id_;
         flow.key = direct;
         flow.first_seen = flow.last_seen = packet.timestamp;
+        flow.iat.enabled = measure_iat_;
         constexpr std::uint8_t syn = 0x02;
         constexpr std::uint8_t ack = 0x10;
         constexpr std::uint8_t fin = 0x01;
@@ -106,6 +107,7 @@ FlowUpdate FlowTable::update(const packet::ParsedPacket& packet) {
     }
     // Late packets contribute counters without rewinding last_seen/idle order.
     // first_seen remains the timestamp of the packet that created the flow.
+    flow.iat.observe(packet.timestamp, flow.packet_count == 0);
     ++flow.packet_count;
     flow.byte_count += packet.total_length;
     if (packet.is_tcp()) {

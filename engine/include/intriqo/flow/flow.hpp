@@ -2,6 +2,7 @@
 
 #include "intriqo/common/types.hpp"
 #include "intriqo/packet/packet.hpp"
+#include "intriqo/flow/iat.hpp"
 #include <map>
 #include <optional>
 #include <unordered_map>
@@ -47,6 +48,9 @@ struct NetworkFlow {
     bool tcp_syn_ack_seen{false};
     bool tcp_handshake_completed{false};
 
+    // Separately gated v2 observation state; v1 extraction never reads it.
+    FlowIAT iat{};
+
     /// Duration of the flow in seconds.
     [[nodiscard]] double duration_seconds() const noexcept;
 
@@ -74,7 +78,8 @@ struct FlowUpdate {
 class FlowTable {
 public:
     explicit FlowTable(Duration idle_timeout = Duration{60.0},
-                       std::size_t max_flows = 100000);
+                       std::size_t max_flows = 100000,
+                       bool measure_iat = false);
 
     /// Expire idle flows before updating; evict the oldest idle flow if full.
     [[nodiscard]] FlowUpdate update(const packet::ParsedPacket& packet);
@@ -94,6 +99,7 @@ private:
     std::map<IdleKey, FlowKey> idle_index_;
     Duration idle_timeout_;
     std::size_t max_flows_;
+    bool measure_iat_;
     FlowId next_id_{1};
 };
 
