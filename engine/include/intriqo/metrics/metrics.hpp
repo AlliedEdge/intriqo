@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <chrono>
+#include "intriqo/transport/flow_feature_sink.hpp"
 
 namespace intriqo::metrics {
 
@@ -61,6 +62,11 @@ struct EngineMetrics {
     std::uint64_t detector_syn_ack_observations{0};
     std::uint64_t detector_ack_completions{0};
     std::uint64_t detector_incomplete_handshakes{0};
+    std::uint64_t feature_records_generated{0};
+    std::uint64_t feature_generation_failures{0};
+    std::uint64_t feature_setup_failures{0};
+    double feature_generation_seconds{0.0};
+    transport::FlowFeatureSinkStatistics feature_stream;
 
     /// Legacy delivered-plus-dropped fraction, retained for source compatibility.
     /// Not a capture/wire loss estimate: ps_recv, callbacks and interface counters

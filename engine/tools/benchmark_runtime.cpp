@@ -5,6 +5,7 @@
 #include "intriqo/pipeline/pipeline_impl.hpp"
 #include "intriqo/runtime/engine_impl.hpp"
 #include "intriqo/transport/event_sink.hpp"
+#include "intriqo/transport/flow_feature_sink.hpp"
 #include "runtime_reporting.hpp"
 
 #include <atomic>
@@ -41,6 +42,9 @@ struct Options {
     bool pcap{false};
     bool live{false};
     bool syn_flood_enabled{false};
+    std::string feature_mode{"off"};
+    std::string feature_output;
+    std::size_t feature_queue_capacity{transport::default_flow_feature_sink_capacity};
     capture::LiveCaptureConfig live_config;
     double duration_seconds{3.0};
     bool synthetic_option_set{false};
@@ -75,6 +79,9 @@ void usage() {
   --portscan-unique-port-threshold N   Distinct ports required (1..65535; default 10)
   --portscan-minimum-attempts N        Positive minimum attempts (default 10)
   --with-syn-flood                    Register the production SYN flood detector
+  --feature-mode off|generate|file     Matched feature-boundary measurement (default off)
+  --feature-output PATH               Regular local JSONL file for feature-mode file
+  --feature-queue-capacity N           Pending feature bound (1..65536; default 4096)
   --help                             Show this help
 
  Measures CaptureSource -> Engine parser -> Pipeline -> DetectorRegistry ->
@@ -169,6 +176,15 @@ Options parse_options(int argc, char** argv) {
             options.detector.minimum_attempts = positive_integer(value(), flag);
         } else if (flag == "--with-syn-flood") {
             options.syn_flood_enabled = true;
+        } else if (flag == "--feature-mode") {
+            options.feature_mode = value();
+            if (options.feature_mode != "off" && options.feature_mode != "generate" && options.feature_mode != "file")
+                throw OptionError("--feature-mode must be off, generate or file");
+        } else if (flag == "--feature-output") {
+            options.feature_output = value();
+        } else if (flag == "--feature-queue-capacity") {
+            options.feature_queue_capacity = positive_integer(value(), flag,
+                transport::maximum_flow_feature_sink_capacity);
         } else {
             throw OptionError("unknown option (use --help for supported options)");
         }
@@ -177,6 +193,8 @@ Options parse_options(int argc, char** argv) {
     if (!options.live && !options.live_config.bpf_filter.empty()) throw OptionError("--filter requires --interface");
     if (options.synthetic_option_set && !options.synthetic)
         throw OptionError("synthetic options require --synthetic");
+    if ((options.feature_mode == "file") != !options.feature_output.empty())
+        throw OptionError("--feature-output is required only for --feature-mode file");
     return options;
 }
 
@@ -311,7 +329,9 @@ void report(const Options& options, const metrics::EngineMetrics& metrics, doubl
               << " source=" << std::quoted(safe_label(options.synthetic ? "generated-tcp-syn" : options.live ? options.live_config.interface_name : options.pcap_path))
               << " status=" << (failed ? "error" : stop_requested.load(std::memory_order_relaxed) ? "interrupted" : "complete")
               << " detector=port_scan" << (options.syn_flood_enabled ? "+syn_flood" : "")
-               << " registry=enabled sink=file output=/dev/null transport=included"
+                << " registry=enabled sink=file output=/dev/null transport=included"
+               << " feature_mode=" << options.feature_mode
+               << " feature_queue_capacity=" << (options.feature_mode == "file" ? options.feature_queue_capacity : 0)
               << " portscan_window_seconds=" << options.detector.window_seconds
               << " portscan_unique_port_threshold=" << options.detector.unique_port_threshold
               << " portscan_minimum_attempts=" << options.detector.minimum_attempts
@@ -344,7 +364,9 @@ void report(const Options& options, const metrics::EngineMetrics& metrics, doubl
               << " engine_runtime_seconds=" << metrics.runtime_seconds
               << " packets_per_second=" << per_second(metrics.packets_received, wall_seconds)
               << " flows_per_second=" << per_second(metrics.flows_created, wall_seconds)
-              << " events_per_second=" << per_second(metrics.events_emitted, wall_seconds)
+               << " events_per_second=" << per_second(metrics.events_emitted, wall_seconds)
+               << " feature_records_per_second=" << per_second(options.feature_mode == "generate"
+                    ? metrics.feature_records_generated : metrics.feature_stream.records_written, wall_seconds)
               << " parsed_packets_per_second=" << per_second(metrics.packets_parsed, wall_seconds)
               << " captured_packets_per_second=" << per_second(metrics.packets_captured, wall_seconds)
               << " processed_packets_per_second=" << per_second(metrics.packets_processed, wall_seconds)
@@ -377,6 +399,21 @@ void report(const Options& options, const metrics::EngineMetrics& metrics, doubl
     std::cout << '\n';
 }
 
+// Benchmark-only bounded discard sink isolates record construction/admission
+// from serialization and transport. It is never exposed by the production CLI.
+class GeneratedFeatureSink final : public transport::FlowFeatureSink {
+public:
+    bool submit(const features::FlowFeatureRecord&) noexcept override {
+        std::lock_guard lock(mutex_); ++statistics_.records_submitted; return true;
+    }
+    transport::FlowFeatureSinkStatistics statistics() const noexcept override {
+        std::lock_guard lock(mutex_); return statistics_;
+    }
+private:
+    mutable std::mutex mutex_;
+    transport::FlowFeatureSinkStatistics statistics_;
+};
+
 int run(const Options& options) {
     std::unique_ptr<capture::CaptureSource> capture;
     if (options.live) capture = std::make_unique<capture::LiveCaptureSource>(options.live_config);
@@ -386,7 +423,12 @@ int run(const Options& options) {
     registry->add(std::make_unique<detection::PortScanDetector>(options.detector));
     if (options.syn_flood_enabled)
         registry->add(std::make_unique<detection::SynFloodDetector>());
-    auto pipeline = std::make_unique<pipeline::PipelineImpl>(std::move(registry), Duration{options.flow_idle_timeout}, options.max_active_flows);
+    std::shared_ptr<transport::FlowFeatureSink> feature_sink;
+    if (options.feature_mode == "generate") feature_sink = std::make_shared<GeneratedFeatureSink>();
+    else if (options.feature_mode == "file") feature_sink = std::make_shared<transport::FileFlowFeatureSink>(
+        options.feature_output, options.feature_queue_capacity);
+    auto pipeline = std::make_unique<pipeline::PipelineImpl>(std::move(registry),
+        Duration{options.flow_idle_timeout}, options.max_active_flows, std::move(feature_sink));
     auto sink = std::make_unique<transport::FileEventSink>("/dev/null");
     runtime::EngineImpl engine(std::move(capture), std::move(pipeline), std::move(sink));
     Latency latency;

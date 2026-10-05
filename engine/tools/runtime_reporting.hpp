@@ -40,5 +40,20 @@ inline void detailed_counters(std::ostream& out, const metrics::EngineMetrics& m
         << " processing_seconds=" << m.processing_seconds
         << " event_sink_seconds=" << m.event_sink_seconds
         << " processing_packets_per_second=" << m.processing_packets_per_second;
+    const auto& f = m.feature_stream;
+    out << " feature_records_generated=" << m.feature_records_generated
+        << " feature_generation_failures=" << m.feature_generation_failures
+        << " feature_setup_failures=" << m.feature_setup_failures
+        << " feature_records_submitted=" << f.records_submitted
+        << " feature_records_written=" << f.records_written
+        << " feature_records_dropped=" << f.records_dropped
+        << " feature_queue_depth=" << f.queue_depth
+        << " feature_queue_peak_depth=" << f.queue_peak_depth
+        << " feature_queue_overflows=" << f.queue_overflows
+        << " feature_write_failures=" << f.write_failures
+        << " feature_validation_failures=" << f.validation_failures
+        << " feature_generation_seconds=" << m.feature_generation_seconds
+        << " feature_serialization_seconds=" << f.serialization_seconds
+        << " feature_write_seconds=" << f.write_seconds;
 }
 } // namespace intriqo::tools

@@ -6,6 +6,7 @@
 #include "intriqo/runtime/engine_impl.hpp"
 #include "intriqo/transport/event_sink.hpp"
 #include "intriqo/transport/queued_event_sink.hpp"
+#include "intriqo/transport/flow_feature_sink.hpp"
 #include "runtime_reporting.hpp"
 
 #include <atomic>
@@ -15,6 +16,7 @@
 #include <condition_variable>
 #include <csignal>
 #include <cstdlib>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -51,6 +53,11 @@ struct Options {
     std::string sink{"file"};
     std::size_t event_queue_capacity{0};
     std::string output{"intriqo-events.jsonl"};
+    std::string feature_output;
+    bool feature_version2{false};
+    bool feature_schema_set{false};
+    std::size_t feature_queue_capacity{transport::default_flow_feature_sink_capacity};
+    bool feature_queue_set{false};
     std::string control_plane_url;
     std::string log_level{"info"};
     bool output_set{false};
@@ -100,6 +107,9 @@ Output:
   --sink file|http                    Event sink (default file)
   --event-queue-capacity N             Pending event bound (0..1000000; default 0)
   --output PATH                       File sink destination (default intriqo-events.jsonl)
+  --feature-output PATH               Enable independent flow_features.v1 JSONL stream
+  --feature-schema flow_features.v1|flow_features.v2  Select feature contract (default v1)
+  --feature-queue-capacity N           Pending feature bound (1..65536; default 4096)
   --control-plane-url URL             Override INTRIQO_CONTROL_PLANE_URL for HTTP
   --log-level error|info|debug         Diagnostic level (default info)
   --help                             Show this help
@@ -111,6 +121,9 @@ enable queued delivery. --event-queue-capacity overrides the environment value.
 INTRIQO_CONTROL_PLANE_ENDPOINT defaults to /api/v1/events and is appended to the
 base URL. URLs and tokens are never logged. Startup/shutdown summaries are on
 stdout; diagnostics are on stderr. SIGINT/SIGTERM stop capture and flush flows.
+Feature streaming is disabled by default. Its local-file worker never depends on
+Python. Overflow drops newest records; write/generation failures are counted and
+warned but never stop deterministic IDS capture. No remote feature sink exists.
 Aliases: --synthetic-packet-count and --portscan-window-seconds.
 )";
 }
@@ -273,6 +286,18 @@ Options parse_options(int argc, char** argv) {
         } else if (flag == "--output") {
             options.output = value();
             options.output_set = true;
+        } else if (flag == "--feature-output") {
+            options.feature_output = value();
+        } else if (flag == "--feature-schema") {
+            const auto schema = value();
+            if (schema != "flow_features.v1" && schema != "flow_features.v2")
+                throw OptionError("unsupported flow feature schema version");
+            options.feature_version2 = schema == "flow_features.v2";
+            options.feature_schema_set = true;
+        } else if (flag == "--feature-queue-capacity") {
+            options.feature_queue_capacity = positive_integer(value(), flag,
+                transport::maximum_flow_feature_sink_capacity);
+            options.feature_queue_set = true;
         } else if (flag == "--control-plane-url") {
             options.control_plane_url = value();
             options.url_set = true;
@@ -298,6 +323,23 @@ Options parse_options(int argc, char** argv) {
         throw OptionError("--output requires --sink file");
     if (options.url_set && options.sink != "http")
         throw OptionError("--control-plane-url requires --sink http");
+    if (options.feature_queue_set && options.feature_output.empty())
+        throw OptionError("--feature-queue-capacity requires --feature-output");
+    if (options.feature_schema_set && options.feature_output.empty())
+        throw OptionError("--feature-schema requires --feature-output");
+    if (!options.feature_output.empty() && options.sink == "file") {
+        std::error_code error;
+        const bool same_file = std::filesystem::equivalent(options.output, options.feature_output, error);
+        error.clear();
+        const auto event_path = std::filesystem::weakly_canonical(options.output, error);
+        if (!error) {
+            const auto feature_path = std::filesystem::weakly_canonical(options.feature_output, error);
+            if (!error && (same_file || event_path == feature_path))
+                throw OptionError("event and flow feature outputs must be separate files");
+        } else if (same_file) {
+            throw OptionError("event and flow feature outputs must be separate files");
+        }
+    }
     if (options.syn_flood.minimum_observation_seconds > options.syn_flood.window_seconds)
         throw OptionError("SYN flood minimum observation must not exceed its window");
     if (options.syn_flood.state_expiration_seconds < options.syn_flood.window_seconds)
@@ -437,6 +479,8 @@ void startup(const Options& options, const std::vector<std::string>& names) {
     if (options.sink == "file") std::cout << " output=" << std::quoted(safe_label(options.output));
     else std::cout << " destination=<configured>";
     std::cout << " log_level=" << options.log_level
+              << " feature_stream=" << (options.feature_output.empty() ? "disabled" : "jsonl")
+              << " feature_queue_capacity=" << (options.feature_output.empty() ? 0 : options.feature_queue_capacity)
               << " portscan_window_seconds=" << options.detector.window_seconds
               << " portscan_unique_port_threshold=" << options.detector.unique_port_threshold
               << " portscan_minimum_attempts=" << options.detector.minimum_attempts
@@ -499,7 +543,20 @@ int run(const Options& options) {
     if (options.syn_flood_enabled)
         registry->add(std::make_unique<detection::SynFloodDetector>(options.syn_flood));
     const auto names = registry->names();
-    auto pipeline = std::make_unique<pipeline::PipelineImpl>(std::move(registry), Duration{options.flow_idle_timeout}, options.max_active_flows);
+    std::shared_ptr<transport::FlowFeatureSink> feature_sink;
+    bool feature_setup_failed = false;
+    if (!options.feature_output.empty()) {
+        try {
+            feature_sink = std::make_shared<transport::FileFlowFeatureSink>(
+                options.feature_output, options.feature_queue_capacity, options.feature_version2);
+        } catch (...) {
+            feature_setup_failed = true;
+            std::cerr << "warning: flow feature stream setup failed; deterministic IDS remains enabled\n";
+        }
+    }
+    auto pipeline = std::make_unique<pipeline::PipelineImpl>(std::move(registry),
+        Duration{options.flow_idle_timeout}, options.max_active_flows, std::move(feature_sink),
+        std::string{}, options.feature_version2);
     std::unique_ptr<transport::SecurityEventSink> sink;
     if (options.sink == "file") sink = std::make_unique<transport::FileEventSink>(options.output);
     else sink = std::make_unique<transport::HttpEventSink>(transport::HttpEventSink::Config{
@@ -533,7 +590,11 @@ int run(const Options& options) {
         failed = true;
         std::cerr << "error: unknown capture or engine runtime failure\n";
     }
-    const auto metrics = engine.metrics();
+    auto metrics = engine.metrics();
+    if (feature_setup_failed) ++metrics.feature_setup_failures;
+    if (metrics.feature_setup_failures || metrics.feature_generation_failures ||
+        metrics.feature_stream.records_dropped || metrics.feature_stream.write_failures)
+        std::cerr << "warning: flow feature stream loss/failure; see feature counters; deterministic IDS unaffected\n";
     if (metrics.sink_failures != 0) {
         failed = true;
         std::cerr << "error: one or more security events could not be delivered\n";
