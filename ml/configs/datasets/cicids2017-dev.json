@@ -1,0 +1,27 @@
+{
+  "schema_version": "dataset_preparation.v1",
+  "dataset_id": "cicids2017",
+  "dataset_version": "CIC-IDS2017 MachineLearningCSV Parquet; capture-day split",
+  "subset_description": "Explicit day-grouped Parquet inputs. Monday is benign training; Tuesday validation; Wednesday held-out test. The external dataset root is supplied on the CLI.",
+  "files": [
+    {"path": "Monday-WorkingHours.pcap_ISCX.csv.parquet", "format": "parquet", "split": "train_normal"},
+    {"path": "Tuesday-WorkingHours.pcap_ISCX.csv.parquet", "format": "parquet", "split": "validation"},
+    {"path": "Wednesday-workingHours.pcap_ISCX.csv.parquet", "format": "parquet", "split": "test"}
+  ],
+  "features": ["duration_seconds", "packet_count", "packets_per_second"],
+  "mapping_version": "cicids2017_projection.v1",
+  "duplicate_policy": "exact_row_within_source_file.v1",
+  "split_strategy": "explicit_capture_day.v1",
+  "split_seed": 42,
+  "target_proportions": [0.6, 0.2, 0.2],
+  "preprocessing": "none",
+  "encoding": "utf-8-sig",
+  "max_rows": 5000000,
+  "max_record_bytes": 65536,
+  "max_file_bytes": 2147483648,
+  "parquet_batch_size": 65536,
+  "rejection_sample_limit": 100,
+  "require_mixed_evaluation": true,
+  "include_test_statistics": true,
+  "timestamp_utc": null
+}

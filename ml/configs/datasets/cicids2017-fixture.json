@@ -1,0 +1,25 @@
+{
+  "schema_version": "dataset_preparation.v1",
+  "dataset_id": "cicids2017_csv",
+  "dataset_version": "fixture.cicids2017-projection.v1",
+  "subset_description": "Tiny synthetic schema fixture for pipeline tests only; not a public-dataset result.",
+  "files": [
+    {"path": "Monday-fixture.csv", "split": "train_normal"},
+    {"path": "Tuesday-fixture.csv", "split": "validation"},
+    {"path": "Wednesday-fixture.csv", "split": "test"}
+  ],
+  "features": ["duration_seconds", "packet_count", "packets_per_second"],
+  "mapping_version": "cicids2017_projection.v1",
+  "split_strategy": "explicit_capture_day.v1",
+  "split_seed": 42,
+  "target_proportions": [0.6, 0.2, 0.2],
+  "preprocessing": "standardize_train_only",
+  "encoding": "utf-8-sig",
+  "max_rows": 1000,
+  "max_record_bytes": 4096,
+  "max_file_bytes": 1048576,
+  "rejection_sample_limit": 10,
+  "require_mixed_evaluation": true,
+  "include_test_statistics": true,
+  "timestamp_utc": "2026-01-01T00:00:00Z"
+}
