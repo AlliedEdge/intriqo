@@ -1,0 +1,389 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "flow_features.v2",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "metadata": {
+      "$ref": "#/definitions/FlowMetadata"
+    },
+    "measurements": {
+      "$ref": "#/definitions/FlowFeatures"
+    },
+    "timing": {
+      "$ref": "#/definitions/FlowTimingV2"
+    },
+    "features": {
+      "$ref": "#/definitions/FlowFeaturesV2"
+    }
+  },
+  "required": [
+    "schema_version",
+    "metadata",
+    "measurements",
+    "timing",
+    "features"
+  ],
+  "title": "FlowFeatureRecordV2",
+  "type": "object",
+  "definitions": {
+    "FlowFeatures": {
+      "additionalProperties": false,
+      "properties": {
+        "packet_count": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Packet Count",
+          "type": "integer"
+        },
+        "byte_count": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Byte Count",
+          "type": "integer"
+        },
+        "duration_seconds": {
+          "maximum": 1.7976931348623157e+308,
+          "minimum": 0,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "bytes_per_packet": {
+          "maximum": 1.7976931348623157e+308,
+          "minimum": 0,
+          "title": "Bytes Per Packet",
+          "type": "number"
+        },
+        "packets_per_second": {
+          "maximum": 1.7976931348623157e+308,
+          "minimum": 0,
+          "title": "Packets Per Second",
+          "type": "number"
+        },
+        "bytes_per_second": {
+          "maximum": 1.7976931348623157e+308,
+          "minimum": 0,
+          "title": "Bytes Per Second",
+          "type": "number"
+        },
+        "fwd_packet_count": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Fwd Packet Count",
+          "type": "integer"
+        },
+        "rev_packet_count": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Rev Packet Count",
+          "type": "integer"
+        },
+        "fwd_byte_count": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Fwd Byte Count",
+          "type": "integer"
+        },
+        "rev_byte_count": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Rev Byte Count",
+          "type": "integer"
+        },
+        "syn_count": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "title": "Syn Count",
+          "type": "integer"
+        },
+        "fin_count": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "title": "Fin Count",
+          "type": "integer"
+        },
+        "rst_count": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "title": "Rst Count",
+          "type": "integer"
+        },
+        "initial_syn_count": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "title": "Initial Syn Count",
+          "type": "integer"
+        },
+        "syn_ack_count": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "title": "Syn Ack Count",
+          "type": "integer"
+        },
+        "ack_count": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "title": "Ack Count",
+          "type": "integer"
+        },
+        "tcp_handshake_started": {
+          "title": "Tcp Handshake Started",
+          "type": "boolean"
+        },
+        "tcp_syn_ack_seen": {
+          "title": "Tcp Syn Ack Seen",
+          "type": "boolean"
+        },
+        "tcp_handshake_completed": {
+          "title": "Tcp Handshake Completed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "packet_count",
+        "byte_count",
+        "duration_seconds",
+        "bytes_per_packet",
+        "packets_per_second",
+        "bytes_per_second",
+        "fwd_packet_count",
+        "rev_packet_count",
+        "fwd_byte_count",
+        "rev_byte_count",
+        "syn_count",
+        "fin_count",
+        "rst_count",
+        "initial_syn_count",
+        "syn_ack_count",
+        "ack_count",
+        "tcp_handshake_started",
+        "tcp_syn_ack_seen",
+        "tcp_handshake_completed"
+      ],
+      "title": "FlowFeatures",
+      "type": "object"
+    },
+    "FlowFeaturesV2": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_seconds": {
+          "maximum": 1.7976931348623157e+308,
+          "minimum": 0,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "packet_count": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Packet Count",
+          "type": "integer"
+        },
+        "packets_per_second": {
+          "maximum": 1.7976931348623157e+308,
+          "minimum": 0,
+          "title": "Packets Per Second",
+          "type": "number"
+        },
+        "minor_direction_packet_fraction": {
+          "le": 0.5,
+          "maximum": 1.7976931348623157e+308,
+          "minimum": 0,
+          "title": "Minor Direction Packet Fraction",
+          "type": "number"
+        },
+        "mean_ipv4_packet_bytes": {
+          "maximum": 1.7976931348623157e+308,
+          "minimum": 0,
+          "title": "Mean Ipv4 Packet Bytes",
+          "type": "number"
+        },
+        "ipv4_direction_byte_imbalance": {
+          "le": 1.0,
+          "maximum": 1.7976931348623157e+308,
+          "minimum": 0,
+          "title": "Ipv4 Direction Byte Imbalance",
+          "type": "number"
+        },
+        "syn_packet_fraction": {
+          "le": 1.0,
+          "maximum": 1.7976931348623157e+308,
+          "minimum": 0,
+          "title": "Syn Packet Fraction",
+          "type": "number"
+        },
+        "fin_packet_fraction": {
+          "le": 1.0,
+          "maximum": 1.7976931348623157e+308,
+          "minimum": 0,
+          "title": "Fin Packet Fraction",
+          "type": "number"
+        },
+        "flow_iat_std_seconds": {
+          "maximum": 1.7976931348623157e+308,
+          "minimum": 0,
+          "title": "Flow Iat Std Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "duration_seconds",
+        "packet_count",
+        "packets_per_second",
+        "minor_direction_packet_fraction",
+        "mean_ipv4_packet_bytes",
+        "ipv4_direction_byte_imbalance",
+        "syn_packet_fraction",
+        "fin_packet_fraction",
+        "flow_iat_std_seconds"
+      ],
+      "title": "FlowFeaturesV2",
+      "type": "object"
+    },
+    "FlowMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "engine_instance_id": {
+          "maxLength": 36,
+          "minLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Engine Instance Id",
+          "type": "string"
+        },
+        "flow_id": {
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^([1-9][0-9]{0,18}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|18446744073709550[0-9]{3}|18446744073709551[0-5][0-9]{2}|1844674407370955160[0-9]{1}|1844674407370955161[0-4]|18446744073709551615)$",
+          "title": "Flow Id",
+          "type": "string"
+        },
+        "first_seen": {
+          "format": "date-time",
+          "maxLength": 30,
+          "minLength": 30,
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{9}Z$",
+          "title": "First Seen",
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "maxLength": 30,
+          "minLength": 30,
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{9}Z$",
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "export_reason": {
+          "enum": [
+            "idle_expired",
+            "capacity_evicted",
+            "shutdown_flush"
+          ],
+          "title": "Export Reason",
+          "type": "string"
+        },
+        "network": {
+          "$ref": "#/definitions/FlowNetwork"
+        }
+      },
+      "required": [
+        "engine_instance_id",
+        "flow_id",
+        "first_seen",
+        "timestamp",
+        "export_reason",
+        "network"
+      ],
+      "title": "FlowMetadata",
+      "type": "object"
+    },
+    "FlowNetwork": {
+      "additionalProperties": false,
+      "properties": {
+        "src_ip": {
+          "format": "ipv4",
+          "maxLength": 15,
+          "minLength": 7,
+          "not": {
+            "pattern": "[^0-9.]"
+          },
+          "pattern": "^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])(\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])){3}$",
+          "title": "Src Ip",
+          "type": "string"
+        },
+        "dst_ip": {
+          "format": "ipv4",
+          "maxLength": 15,
+          "minLength": 7,
+          "not": {
+            "pattern": "[^0-9.]"
+          },
+          "pattern": "^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])(\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])){3}$",
+          "title": "Dst Ip",
+          "type": "string"
+        },
+        "src_port": {
+          "maximum": 65535,
+          "minimum": 0,
+          "title": "Src Port",
+          "type": "integer"
+        },
+        "dst_port": {
+          "maximum": 65535,
+          "minimum": 0,
+          "title": "Dst Port",
+          "type": "integer"
+        },
+        "protocol": {
+          "enum": [
+            "TCP",
+            "UDP",
+            "ICMP",
+            "OTHER"
+          ],
+          "title": "Protocol",
+          "type": "string"
+        }
+      },
+      "required": [
+        "src_ip",
+        "dst_ip",
+        "src_port",
+        "dst_port",
+        "protocol"
+      ],
+      "title": "FlowNetwork",
+      "type": "object"
+    },
+    "FlowTimingV2": {
+      "additionalProperties": false,
+      "properties": {
+        "policy": {
+          "const": "capture_order_nondecreasing_population.v1",
+          "title": "Policy",
+          "type": "string"
+        },
+        "gap_count": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Gap Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "policy",
+        "gap_count"
+      ],
+      "title": "FlowTimingV2",
+      "type": "object"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://intriqo.dev/contracts/features/flow_features_v2.json",
+  "description": "Native v2 retirement measurements and nine feature inputs. IPv4 total bytes exclude Ethernet headers. IAT uses nondecreasing capture/file order and population standard deviation in seconds; invalid timing is never exported.",
+  "$comment": "Use parse_flow_feature_record_v2 for full validation: 8192-byte bound, 16-container depth, unique keys, finite numbers, strict integer tokens, calendar timestamps, native sums/transport/handshake evidence, projection formulas, duration/rates and gap_count=max(packet_count-1,0). Empty or one-gap population std is zero. No model execution or recalculation/normalization of accepted feature values occurs. Roundoff checks use rtol=1e-12, atol=1e-15."
+}

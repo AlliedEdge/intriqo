@@ -14,6 +14,7 @@ another layer's implementation details.
 
 ```
 C++ Engine ──────────────────── SecurityEvent JSON ──────────────────────► Control Plane
+C++ Engine ──────────────────── FlowFeatureRecord v1 JSONL ───────────────► Python validation consumer (no ML model)
 Control Plane ───────────────── AgentTask JSON ──────────────────────────► Agent Platform
 Agent Platform ──────────────── AgentResult / Finding JSON ──────────────► Control Plane
 Control Plane ───────────────── REST API (OpenAPI) ──────────────────────► Frontend
@@ -24,6 +25,7 @@ Control Plane ───────────────── REST API (Open
 ```
 contracts/
 ├── events/       Engine → Control Plane event schemas
+├── features/     Engine → future ML worker measurement schemas (validation only)
 ├── agents/       Control Plane ↔ Agent Platform schemas
 └── actions/      Agent-proposed action / policy-decision schemas
 ```
@@ -36,3 +38,9 @@ it describes and is versioned in the filename (`security_event_v1.json`).
 The Python control plane and agent platform import these schemas for
 validation.  The C++ engine serialises to these contracts in its output layer.
 The frontend TypeScript types are generated from these schemas.
+
+`features/flow_features_v1.json` uses the explicit `flow_features.v1` wire tag.
+All v1 fields are required and extra fields are rejected. The C++ engine emits
+measurements only at flow retirement; no raw packets cross this boundary. Read
+[`FlowFeatureRecord v1`](../docs/engine/flow-feature-contract.md) for exact units,
+lifecycle, semantic checks beyond JSON Schema, failure policies and versioning.
