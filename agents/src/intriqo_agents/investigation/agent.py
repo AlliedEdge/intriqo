@@ -3,24 +3,28 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Any, Mapping, Sequence
 
-from intriqo_agents.core.agent import Agent
 from intriqo_agents.contracts.security_event import SecurityEvent
-from intriqo_agents.state.task import AgentTask
+from intriqo_agents.control_plane.client import ControlPlaneClient, ControlPlaneError
+from intriqo_agents.core.agent import Agent
 from intriqo_agents.state.result import AgentResult
+from intriqo_agents.state.task import AgentTask
 from intriqo_agents.tools.base import Tool, ToolResult
+from intriqo_agents.tools.control_plane import (
+    GetEventTool,
+    GetIncidentTool,
+    GetRelatedEventsTool,
+    GetTaskTool,
+    SubmitFindingTool,
+    UpdateTaskTool,
+)
 from intriqo_agents.tools.mock_tools import (
-    NetworkFlowQueryTool,
     HistoricalAlertsQueryTool,
     HostActivityQueryTool,
+    NetworkFlowQueryTool,
 )
-from intriqo_agents.control_plane.client import ControlPlaneClient, ControlPlaneError
-from intriqo_agents.tools.control_plane import (
-    GetEventTool, GetIncidentTool, GetRelatedEventsTool, GetTaskTool, SubmitFindingTool, UpdateTaskTool,
-)
-
 
 logger = logging.getLogger("intriqo.agents.investigation")
 
@@ -95,13 +99,29 @@ class InvestigationAgent(Agent):
             finding = {"task_id": task_id, "agent_name": self.name, "status": result.status,
                        "confidence": result.confidence, "findings": list(result.findings),
                        "evidence": list(result.evidence), "summary": result.summary,
-                       "error": result.error, "finding_metadata": result.metadata}
+                       "error": result.error, "finding_metadata": result.metadata,
+                       "event_id": event["event_id"], "incident_id": incident_id,
+                       "severity": event["severity"],
+                       "source": "ML" if event["event_type"] == "ML_ANOMALY" else "DETERMINISTIC",
+                       "provenance": {
+                           "event_type": event["event_type"],
+                           "detection_source": (
+                               event.get("details", {}).get("detection_source")
+                               or ("ML" if event["event_type"] == "ML_ANOMALY" else "DETERMINISTIC")
+                           ),
+                           "detector": event.get("details", {}).get("detector"),
+                       }}
             submitted = SubmitFindingTool(cp).execute({"finding": finding})
             if not submitted.success:
                 raise ControlPlaneError(submitted.error or "finding submission failed")
-            UpdateTaskTool(cp).execute({"task_id": task_id, "status": "COMPLETED"})
+            final_status = "FAILED" if result.status == "FAILED" else "COMPLETED"
+            final_update = UpdateTaskTool(cp).execute(
+                {"task_id": task_id, "status": final_status}
+            )
+            if not final_update.success:
+                raise ControlPlaneError(final_update.error or "task completion failed")
             return result
-        except Exception as exc:  # failure is persisted, never silently swallowed
+        except Exception as exc:  # noqa: BLE001 - failure is persisted, never silently swallowed
             try:
                 UpdateTaskTool(cp).execute({"task_id": task_id, "status": "FAILED"})
             except Exception:
@@ -114,8 +134,17 @@ class InvestigationAgent(Agent):
     def _investigate_control_plane_event(self, task: AgentTask) -> AgentResult:
         """Deterministically analyze detector details returned by the Control Plane."""
         event = task.security_event
-        if event.event_type != "PORT_SCAN_DETECTED":
-            return self.execute(task)
+        if event.event_type in {"PORT_SCAN", "PORT_SCAN_DETECTED"}:
+            return self._investigate_port_scan_details(task)
+        if event.event_type == "SYN_FLOOD":
+            return self._investigate_syn_flood(task)
+        if event.event_type == "ML_ANOMALY":
+            return self._investigate_ml_anomaly(task)
+        return self.execute(task)
+
+    def _investigate_port_scan_details(self, task: AgentTask) -> AgentResult:
+        """Build port-scan evidence directly from the persisted event receipt."""
+        event = task.security_event
         details = event.metadata
         ports = details.get("targeted_ports") or details.get("ports") or []
         if isinstance(ports, int):
@@ -136,6 +165,74 @@ class InvestigationAgent(Agent):
             evidence=evidence, confidence=0.95,
             summary=f"Port scan confirmed from {event.source} to {event.target}.",
             metadata={"finding_type": "PORT_SCAN_ANALYSIS", "recommendation": "Investigate source host and apply response policy."},
+        )
+
+    def _investigate_syn_flood(self, task: AgentTask) -> AgentResult:
+        """Build bounded SYN-flood evidence from detector metadata only."""
+        event = task.security_event
+        details = event.metadata
+        destination_port = details.get("destination_port")
+        attempts = details.get("initial_syn_attempts", details.get("connection_attempts", 0))
+        incomplete = details.get("incomplete_handshakes", 0)
+        rate = details.get("rate_per_second", details.get("observed_rate", 0.0))
+        ratio = details.get("incomplete_ratio")
+        evidence = [{
+            "type": "syn_flood_analysis",
+            "source_ip": event.source,
+            "destination_ip": event.target,
+            "destination_port": destination_port,
+            "syn_count": attempts,
+            "incomplete_handshake_count": incomplete,
+            "observed_rate_per_second": rate,
+            "incomplete_ratio": ratio,
+            "window_seconds": details.get("window_seconds"),
+            "detector_name": details.get("detector", "syn_flood"),
+            "severity": event.severity,
+            "timestamp": event.timestamp.isoformat(),
+        }]
+        return AgentResult.success(
+            task_id=task.task_id,
+            agent_name=self.name,
+            findings=[
+                f"SYN flood indicators observed from {event.source} to {event.target}.",
+                f"Observed {incomplete} incomplete handshakes over {destination_port or 'the reported'} destination port.",
+            ],
+            evidence=evidence,
+            confidence=0.95,
+            summary=f"SYN flood indicators confirmed from {event.source} to {event.target}.",
+            metadata={"finding_type": "SYN_FLOOD_ANALYSIS"},
+        )
+
+    def _investigate_ml_anomaly(self, task: AgentTask) -> AgentResult:
+        """Preserve the ML detector receipt as structured, payload-free evidence."""
+        event = task.security_event
+        details = event.metadata
+        raw_result = details.get("result")
+        result = raw_result if isinstance(raw_result, dict) else details
+        allowed = (
+            "flow_id", "anomaly_score", "threshold", "model_version", "model_sha256",
+            "threshold_sha256", "feature_schema_version", "detector", "engine_instance_id",
+        )
+        evidence = [{
+            "type": "ml_anomaly_analysis",
+            "event_type": "ML_ANOMALY",
+            **{key: result[key] for key in allowed if key in result},
+            "detection_source": "ML",
+            "severity": event.severity,
+            "source_ip": event.source,
+            "destination_ip": event.target,
+            "timestamp": event.timestamp.isoformat(),
+        }]
+        score = result.get("anomaly_score")
+        threshold = result.get("threshold")
+        return AgentResult.success(
+            task_id=task.task_id,
+            agent_name=self.name,
+            findings=[f"ML anomaly receipt reviewed for flow {result.get('flow_id', 'unknown')} with score {score!r} against threshold {threshold!r}."],
+            evidence=evidence,
+            confidence=0.75,
+            summary="ML anomaly receipt reviewed without changing the locked detector decision.",
+            metadata={"finding_type": "ML_ANOMALY_REVIEW", "experimental": True},
         )
 
     @property
@@ -160,8 +257,12 @@ class InvestigationAgent(Agent):
         )
 
         try:
-            if event.event_type == "PORT_SCAN_DETECTED":
+            if event.event_type in {"PORT_SCAN", "PORT_SCAN_DETECTED"}:
                 return self._investigate_port_scan(task)
+            if event.event_type == "SYN_FLOOD":
+                return self._investigate_syn_flood(task)
+            if event.event_type == "ML_ANOMALY":
+                return self._investigate_ml_anomaly(task)
 
             logger.warning("Event type '%s' not yet handled by %s", event.event_type, self.name)
             return AgentResult.failure(
@@ -170,10 +271,10 @@ class InvestigationAgent(Agent):
                 error_message=f"Event type '{event.event_type}' is not supported by {self.name}",
                 error_details={"unsupported_event_type": event.event_type},
             )
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.error(
-                "Unhandled error in agent '%s' on task '%s': %s",
-                self.name, task.task_id, exc, exc_info=True,
+        except Exception as exc:
+            logger.exception(
+                "Unhandled error in agent '%s' on task '%s'",
+                self.name, task.task_id,
             )
             return AgentResult.failure(
                 task_id=task.task_id,
@@ -224,8 +325,10 @@ class InvestigationAgent(Agent):
                 agent_name=self.name,
                 status="INCONCLUSIVE",
                 findings=(
-                    f"No matching network flows found for source {event.source} "
-                    f"targeting {event.target}",
+                    (
+                        f"No matching network flows found for source {event.source} "
+                        f"targeting {event.target}"
+                    ),
                 ),
                 evidence=(),
                 confidence=0.5,
@@ -236,14 +339,16 @@ class InvestigationAgent(Agent):
                 metadata={"queried_flows": 0},
             )
 
-        ports = sorted(set(f["dst_port"] for f in flows if "dst_port" in f))
+        ports = sorted({f["dst_port"] for f in flows if "dst_port" in f})
         total_packets = sum(f.get("packet_count", 0) for f in flows)
         total_bytes   = sum(f.get("byte_count", 0) for f in flows)
 
         findings = [
             f"Observed {len(flows)} suspicious connection attempts from {event.source} to {event.target}.",
-            f"Attacker probed {len(ports)} distinct destination ports: "
-            f"{ports[:10]}{'...' if len(ports) > 10 else ''}.",
+            (
+                f"Attacker probed {len(ports)} distinct destination ports: "
+                f"{ports[:10]}{'...' if len(ports) > 10 else ''}."
+            ),
         ]
         evidence = [
             {"type": "port_distribution", "distinct_port_count": len(ports), "ports": ports},

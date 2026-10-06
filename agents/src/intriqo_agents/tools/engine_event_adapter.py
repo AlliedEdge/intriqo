@@ -38,6 +38,7 @@ Event Type Mapping
 Engine event_type   Python event_type
 ─────────────────   ─────────────────
 PORT_SCAN           PORT_SCAN_DETECTED
+ML_ANOMALY          ML_ANOMALY
 
 Architectural constraints
 ─────────────────────────
@@ -55,8 +56,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from intriqo_agents.contracts.security_event import SecurityEvent, VALID_SEVERITIES
-
+from intriqo_agents.contracts.security_event import VALID_SEVERITIES, SecurityEvent
 
 logger = logging.getLogger("intriqo.agents.tools.engine_event_adapter")
 
@@ -64,6 +64,14 @@ logger = logging.getLogger("intriqo.agents.tools.engine_event_adapter")
 # When the engine adds a new detector, add its event type mapping here.
 EVENT_TYPE_MAP: dict[str, str] = {
     "PORT_SCAN": "PORT_SCAN_DETECTED",
+    "SYN_FLOOD": "SYN_FLOOD",
+    # Keep ML findings distinct from deterministic detector event names.  The
+    # payload's details.detection_source is validated below as provenance.
+    "ML_ANOMALY": "ML_ANOMALY",
+}
+
+_EXPECTED_DETECTION_SOURCE: dict[str, str] = {
+    "ML_ANOMALY": "ML",
 }
 
 _REQUIRED_FIELDS: frozenset[str] = frozenset({
@@ -143,6 +151,7 @@ def adapt_from_dict(data: dict[str, Any]) -> SecurityEvent:
     metadata = _sanitize_metadata(raw_details)
     if description:
         metadata["description"] = description
+    _validate_detection_source(event_type, metadata)
 
     logger.debug(
         "Adapted engine SecurityEvent: event_id=%s event_type=%s source=%s target=%s",
@@ -190,6 +199,18 @@ def _map_event_type(engine_event_type: str) -> str:
         engine_event_type,
     )
     return engine_event_type
+
+
+def _validate_detection_source(event_type: str, metadata: dict[str, Any]) -> None:
+    """Require explicit provenance for ML events without changing v1."""
+    expected = _EXPECTED_DETECTION_SOURCE.get(event_type)
+    if expected is None:
+        return
+    source = metadata.get("detection_source")
+    if source != expected:
+        raise EngineEventAdapterError(
+            f"ML_ANOMALY requires details.detection_source='{expected}'"
+        )
 
 
 def _validate_severity(raw: str) -> str:

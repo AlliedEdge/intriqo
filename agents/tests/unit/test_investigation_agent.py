@@ -1,10 +1,10 @@
 """Unit tests for InvestigationAgent end-to-end execution."""
 
-from datetime import datetime, timezone
 import unittest
+from datetime import datetime, timezone
 
-from intriqo_agents.investigation.agent import InvestigationAgent
 from intriqo_agents.contracts.security_event import SecurityEvent
+from intriqo_agents.investigation.agent import InvestigationAgent
 from intriqo_agents.state.task import AgentTask
 from intriqo_agents.tools.base import Tool, ToolResult
 from intriqo_agents.tools.mock_tools import NetworkFlowQueryTool
@@ -39,6 +39,57 @@ class TestInvestigationAgent(unittest.TestCase):
         result = agent.execute(self.port_scan_task)
         self.assertEqual(result.status, "INCONCLUSIVE")
         self.assertEqual(result.confidence, 0.5)
+
+    def test_syn_flood_investigation_preserves_detector_evidence(self) -> None:
+        event = SecurityEvent(
+            id="evt-syn", timestamp=datetime.now(timezone.utc), event_type="SYN_FLOOD",
+            severity="CRITICAL", source="10.0.0.1", target="10.0.0.2",
+            metadata={
+                "detector": "syn_flood", "destination_port": 443,
+                "connection_attempts": 120, "incomplete_handshakes": 110,
+                "incomplete_ratio": 0.916, "rate_per_second": 60.0,
+                "window_seconds": 10.0,
+            },
+        )
+        task = AgentTask(
+            task_id="task-syn", task_type="INVESTIGATION", description="Investigate SYN flood",
+            security_event=event,
+        )
+
+        result = self.agent.execute(task)
+
+        self.assertEqual(result.status, "SUCCESS")
+        evidence = result.evidence[0]
+        self.assertEqual(evidence["type"], "syn_flood_analysis")
+        self.assertEqual(evidence["detector_name"], "syn_flood")
+        self.assertEqual(evidence["incomplete_handshake_count"], 110)
+
+    def test_ml_anomaly_investigation_preserves_locked_receipt_without_labels(self) -> None:
+        event = SecurityEvent(
+            id="evt-ml", timestamp=datetime.now(timezone.utc), event_type="ML_ANOMALY",
+            severity="MEDIUM", source="10.0.0.1", target="10.0.0.2",
+            metadata={
+                "detection_source": "ML", "detector": "isolation_forest_v2",
+                "result": {
+                    "flow_id": "8", "anomaly_score": 0.7, "threshold": 0.5,
+                    "model_sha256": "a" * 64, "threshold_sha256": "b" * 64,
+                    "feature_schema_version": "flow_features.v2", "detector": "isolation_forest_v2",
+                    "labels": ["must-not-be-forwarded"],
+                },
+            },
+        )
+        task = AgentTask(
+            task_id="task-ml", task_type="INVESTIGATION", description="Review ML anomaly",
+            security_event=event,
+        )
+
+        result = self.agent.execute(task)
+
+        self.assertEqual(result.status, "SUCCESS")
+        evidence = result.evidence[0]
+        self.assertEqual(evidence["detection_source"], "ML")
+        self.assertEqual(evidence["detector"], "isolation_forest_v2")
+        self.assertNotIn("labels", evidence)
 
     def test_missing_required_tool_returns_failure(self) -> None:
         result = InvestigationAgent(tools={}).execute(self.port_scan_task)

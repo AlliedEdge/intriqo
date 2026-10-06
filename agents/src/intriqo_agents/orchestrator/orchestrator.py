@@ -11,16 +11,16 @@ respond → verify → repeat) will build on this foundation in future phases.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 import uuid
+from collections.abc import Callable
+from typing import cast
 
-from intriqo_agents.core.agent import Agent
 from intriqo_agents.contracts.security_event import SecurityEvent
-from intriqo_agents.state.task import AgentTask
-from intriqo_agents.state.result import AgentResult
-from intriqo_agents.orchestrator.registry import AgentRegistry
 from intriqo_agents.control_plane.client import ControlPlaneClient
-
+from intriqo_agents.core.agent import Agent
+from intriqo_agents.orchestrator.registry import AgentRegistry
+from intriqo_agents.state.result import AgentResult
+from intriqo_agents.state.task import AgentTask
 
 logger = logging.getLogger("intriqo.agents.orchestrator")
 
@@ -40,11 +40,13 @@ class AgentOrchestrator:
         if task_payload is not None and task_payload.get("task_type") != "INVESTIGATION":
             return AgentResult.failure(task_id, "orchestrator", "Unsupported task type", {"task_type": task_payload.get("task_type")})
         agent = self.registry.find_agent_by_capability("investigation")
-        if agent is None or not hasattr(agent, "execute_task"):
+        execute_task = getattr(agent, "execute_task", None) if agent is not None else None
+        if not callable(execute_task):
             return AgentResult.failure(task_id, "orchestrator", "No remote investigation agent available")
-        return agent.execute_task(task_id, self.client)  # type: ignore[attr-defined]
+        runner = cast(Callable[[str, ControlPlaneClient | None], AgentResult], execute_task)
+        return runner(task_id, self.client)
 
-    def create_task(self, event: SecurityEvent, task_id: Optional[str] = None) -> AgentTask:
+    def create_task(self, event: SecurityEvent, task_id: str | None = None) -> AgentTask:
         """Derive an AgentTask from a SecurityEvent."""
         if not isinstance(event, SecurityEvent):
             raise TypeError(f"Expected SecurityEvent instance, got {type(event).__name__}")
@@ -65,7 +67,7 @@ class AgentOrchestrator:
             context={"event_metadata": event.metadata},
         )
 
-    def select_agent(self, task: AgentTask) -> Optional[Agent]:
+    def select_agent(self, task: AgentTask) -> Agent | None:
         """Resolve an appropriate agent for the assigned task."""
         if not isinstance(task, AgentTask):
             raise TypeError(f"Expected AgentTask instance, got {type(task).__name__}")
@@ -103,11 +105,8 @@ class AgentOrchestrator:
                 task.task_id, agent.name, result.status,
             )
             return result
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.error(
-                "Agent '%s' crashed on task '%s': %s",
-                agent.name, task.task_id, exc, exc_info=True,
-            )
+        except Exception as exc:
+            logger.exception("Agent '%s' crashed on task '%s'", agent.name, task.task_id)
             return AgentResult.failure(
                 task_id=task.task_id,
                 agent_name=agent.name,

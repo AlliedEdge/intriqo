@@ -1,12 +1,12 @@
 """Unit tests for domain models (SecurityEvent, AgentTask, AgentResult)."""
 
+import unittest
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
-import unittest
 
 from intriqo_agents.contracts.security_event import SecurityEvent
-from intriqo_agents.state.task import AgentTask
 from intriqo_agents.state.result import AgentResult
+from intriqo_agents.state.task import AgentTask
 
 
 class TestSecurityEventModel(unittest.TestCase):
@@ -55,6 +55,16 @@ class TestSecurityEventModel(unittest.TestCase):
         self.assertEqual(self.event.event_type, restored.event_type)
         self.assertEqual(self.event.severity, restored.severity)
         self.assertEqual(self.event.metadata, restored.metadata)
+
+    def test_detection_source_defaults_for_native_events(self) -> None:
+        self.assertEqual(self.event.detection_source, "DETERMINISTIC")
+
+    def test_detection_source_is_preserved_for_ml_events(self) -> None:
+        event = SecurityEvent(
+            id="evt-ml", timestamp=self.now, event_type="ML_ANOMALY", severity="MEDIUM",
+            source="10.0.0.1", target="10.0.0.2", metadata={"detection_source": "ML"},
+        )
+        self.assertEqual(event.detection_source, "ML")
 
 
 class TestAgentTaskModel(unittest.TestCase):

@@ -7,7 +7,8 @@ finding submission.  It never opens a database connection or executes commands.
 from __future__ import annotations
 
 import os
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any, cast
 
 import httpx
 
@@ -44,7 +45,7 @@ class ControlPlaneClient:
     def close(self) -> None:
         self._client.close()
 
-    def __enter__(self) -> "ControlPlaneClient":
+    def __enter__(self) -> ControlPlaneClient:  # noqa: PYI034 - Python 3.10-compatible return type
         return self
 
     def __exit__(self, *_: object) -> None:
@@ -67,7 +68,7 @@ class ControlPlaneClient:
                 status_code=response.status_code,
                 body=body,
             )
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     def get_event(self, event_id: str) -> dict[str, Any]:
         return self._request("GET", f"/api/v1/events/{event_id}")
@@ -77,6 +78,29 @@ class ControlPlaneClient:
 
     def get_task(self, task_id: str) -> dict[str, Any]:
         return self._request("GET", f"/api/v1/agent-tasks/{task_id}")
+
+    def list_tasks(
+        self,
+        *,
+        status: str | None = None,
+        task_type: str | None = None,
+        page_size: int = 500,
+    ) -> list[dict[str, Any]]:
+        """List persisted tasks visible to this authenticated agent."""
+        tasks: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            params: dict[str, Any] = {"page": page, "page_size": page_size}
+            if status is not None:
+                params["status"] = status
+            if task_type is not None:
+                params["task_type"] = task_type
+            body = self._request("GET", "/api/v1/agent-tasks", params=params)
+            page_items = list(body.get("items", []))
+            tasks.extend(page_items)
+            if not body.get("has_next") or not page_items:
+                return tasks
+            page += 1
 
     def get_related_events(self, event_ids: list[str]) -> list[dict[str, Any]]:
         """Read only the event IDs supplied by the assigned incident."""

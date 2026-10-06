@@ -10,10 +10,10 @@ owns persistence and fanout; agents only receive this immutable value object.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Mapping
-
+from typing import Any
 
 VALID_SEVERITIES = frozenset({"LOW", "MEDIUM", "HIGH", "CRITICAL"})
 
@@ -63,6 +63,12 @@ class SecurityEvent:
             "target": self.target,
             "metadata": dict(self.metadata),
         }
+
+    @property
+    def detection_source(self) -> str:
+        """Return detector provenance while preserving the v1 payload shape."""
+        value = self.metadata.get("detection_source")
+        return value if isinstance(value, str) else "DETERMINISTIC"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SecurityEvent:

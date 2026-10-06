@@ -9,15 +9,15 @@ import json
 import unittest
 from datetime import datetime, timezone
 
-from intriqo_agents.tools.engine_event_adapter import (
-    EngineEventAdapterError,
-    adapt_from_dict,
-    adapt_from_json,
-    EVENT_TYPE_MAP,
-)
 from intriqo_agents.contracts.security_event import SecurityEvent
 from intriqo_agents.orchestrator.orchestrator import AgentOrchestrator
 from intriqo_agents.orchestrator.registry import AgentRegistry
+from intriqo_agents.tools.engine_event_adapter import (
+    EVENT_TYPE_MAP,
+    EngineEventAdapterError,
+    adapt_from_dict,
+    adapt_from_json,
+)
 
 
 def _valid_contract(**overrides) -> dict:
@@ -38,6 +38,23 @@ def _valid_contract(**overrides) -> dict:
             "sourceAddress": "192.168.1.50",
         },
     }
+    base.update(overrides)
+    return base
+
+
+def _valid_ml_contract(**overrides) -> dict:
+    base = _valid_contract(
+        event_id="evt-ml-001",
+        event_type="ML_ANOMALY",
+        description="ML anomaly detected",
+        details={
+            "detection_source": "ML",
+            "detector": "isolation_forest_v2",
+            "anomaly_score": 0.7,
+            "threshold": 0.5153855054112947,
+            "is_anomaly": True,
+        },
+    )
     base.update(overrides)
     return base
 
@@ -88,6 +105,17 @@ class TestAdaptFromDict(unittest.TestCase):
     def test_event_type_port_scan_mapped(self) -> None:
         event = adapt_from_dict(_valid_contract(event_type="PORT_SCAN"))
         self.assertEqual(event.event_type, "PORT_SCAN_DETECTED")
+
+    def test_ml_anomaly_mapping_preserves_provenance(self) -> None:
+        event = adapt_from_dict(_valid_ml_contract())
+        self.assertEqual(event.event_type, "ML_ANOMALY")
+        self.assertEqual(event.detection_source, "ML")
+        self.assertEqual(event.metadata["detector"], "isolation_forest_v2")
+
+    def test_ml_anomaly_requires_explicit_ml_provenance(self) -> None:
+        for details in ({}, {"detection_source": "DETERMINISTIC"}):
+            with self.subTest(details=details), self.assertRaises(EngineEventAdapterError):
+                adapt_from_dict(_valid_ml_contract(details=details))
 
     def test_all_severity_values_accepted(self) -> None:
         for sev in ("LOW", "MEDIUM", "HIGH", "CRITICAL"):
@@ -210,11 +238,24 @@ class TestAdaptFromDict(unittest.TestCase):
         self.assertEqual(event, task.security_event)
         self.assertEqual(task.priority, "MEDIUM")
 
+    def test_ml_event_keeps_distinct_type_and_source_in_task(self) -> None:
+        event = adapt_from_dict(_valid_ml_contract())
+        task = AgentOrchestrator(AgentRegistry()).create_task(event)
+        self.assertEqual(task.security_event.event_type, "ML_ANOMALY")
+        self.assertEqual(task.security_event.detection_source, "ML")
+        self.assertEqual(task.context["event_metadata"]["detection_source"], "ML")
+
     # ── EVENT_TYPE_MAP integrity ─────────────────────────────────────────────
 
     def test_port_scan_in_map(self) -> None:
         self.assertIn("PORT_SCAN", EVENT_TYPE_MAP)
         self.assertEqual(EVENT_TYPE_MAP["PORT_SCAN"], "PORT_SCAN_DETECTED")
+
+    def test_ml_anomaly_in_map(self) -> None:
+        self.assertEqual(EVENT_TYPE_MAP["ML_ANOMALY"], "ML_ANOMALY")
+
+    def test_syn_flood_in_map(self) -> None:
+        self.assertEqual(EVENT_TYPE_MAP["SYN_FLOOD"], "SYN_FLOOD")
 
     def test_unknown_event_type_passes_through(self) -> None:
         event = adapt_from_dict(_valid_contract(event_type="FUTURE_DETECTOR_TYPE"))

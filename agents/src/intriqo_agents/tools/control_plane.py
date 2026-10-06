@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from intriqo_agents.control_plane.client import ControlPlaneClient, ControlPlaneError
@@ -12,7 +13,12 @@ class _ControlPlaneTool(Tool):
     def __init__(self, client: ControlPlaneClient) -> None:
         self.client = client
 
-    def _safe(self, operation: str, callback, value: str) -> ToolResult:
+    def _safe(
+        self,
+        operation: str,
+        callback: Callable[[str], dict[str, Any]],
+        value: str,
+    ) -> ToolResult:
         try:
             return ToolResult.ok({operation: callback(value)})
         except ControlPlaneError as exc:
