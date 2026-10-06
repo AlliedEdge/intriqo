@@ -2,9 +2,11 @@
 #include "intriqo/features/flow_feature_record_v2.hpp"
 #include "intriqo/pipeline/pipeline_impl.hpp"
 #include "intriqo/detection/port_scan_detector.hpp"
+#include "intriqo/protocol/protocol_parser.hpp"
 #include <array>
 #include <cmath>
 #include <limits>
+#include <vector>
 
 using intriqo::TimePoint;
 using intriqo::PacketSize;
@@ -12,6 +14,8 @@ using intriqo::Duration;
 using intriqo::Protocol;
 namespace flow = intriqo::flow;
 namespace features = intriqo::features;
+namespace pipeline = intriqo::pipeline;
+namespace protocol = intriqo::protocol;
 namespace {
 constexpr auto id = "123e4567-e89b-42d3-a456-426614174000";
 intriqo::packet::ParsedPacket packet(std::int64_t nanoseconds, bool reverse = false,
@@ -27,6 +31,36 @@ intriqo::packet::ParsedPacket packet(std::int64_t nanoseconds, bool reverse = fa
 }
 features::FlowFeatureRecordV2 record(const flow::NetworkFlow& f) {
     return features::FlowFeatureRecordV2::from_flow(f, id, features::FlowExportReason::shutdown_flush);
+}
+
+struct V2Records final : intriqo::transport::FlowFeatureSink {
+    std::vector<features::FlowFeatureRecordV2> records;
+
+    bool submit(const features::FlowFeatureRecord&) noexcept override { return false; }
+    bool submit_v2(const features::FlowFeatureRecordV2& value) noexcept override {
+        try {
+            records.push_back(value);
+            return true;
+        } catch (...) {
+            return false;
+        }
+    }
+};
+
+std::array<std::byte, 54> tcp_frame() {
+    std::array<std::byte, 54> bytes{};
+    bytes[12] = std::byte{0x08}; bytes[13] = std::byte{0x00};
+    bytes[14] = std::byte{0x45};
+    bytes[16] = std::byte{0x00}; bytes[17] = std::byte{0x28}; // IPv4 total length: 40
+    bytes[23] = std::byte{0x06};
+    bytes[26] = std::byte{192}; bytes[27] = std::byte{0};
+    bytes[28] = std::byte{2}; bytes[29] = std::byte{10};
+    bytes[30] = std::byte{198}; bytes[31] = std::byte{51};
+    bytes[32] = std::byte{100}; bytes[33] = std::byte{20};
+    bytes[34] = std::byte{0x9c}; bytes[35] = std::byte{0x40};
+    bytes[36] = std::byte{0x01}; bytes[37] = std::byte{0xbb};
+    bytes[46] = std::byte{0x50}; bytes[47] = std::byte{0x02};
+    return bytes;
 }
 }
 
@@ -207,4 +241,65 @@ TEST(FlowFeaturesV2, EnabledV2StreamDoesNotChangeDeterministicSecurityEvents) {
     EXPECT_EQ(left[0].details,right[0].details);
     EXPECT_EQ(sink->count,10U);
     EXPECT_EQ(b.statistics().feature_generation_failures,0U);
+}
+
+TEST(FlowFeaturesV2, AcceptedIpv4TotalLengthIsMeasuredAndMalformedInputIsolated) {
+    auto bytes = tcp_frame();
+    protocol::IPv4Parser parser;
+    const auto timestamp = TimePoint{std::chrono::seconds{1700000000}};
+    auto accepted = parser.parse({timestamp, std::span<const std::byte>{bytes}, 1,
+                                  bytes.size(), bytes.size()});
+    ASSERT_TRUE(accepted);
+    EXPECT_EQ(accepted->total_length, 40U);
+
+    const auto truncated = parser.parse({timestamp,
+        std::span<const std::byte>{bytes.data(), bytes.size() - 1}, 1,
+        bytes.size(), bytes.size() - 1});
+    EXPECT_FALSE(truncated);
+
+    flow::FlowTable table(Duration{60}, 100, true);
+    (void)table.update(*accepted);
+    ASSERT_EQ(table.size(), 1U);
+    const auto exported = record(table.flush().front());
+    EXPECT_EQ(exported.values.packet_count, 1U);
+    EXPECT_DOUBLE_EQ(exported.values.mean_ipv4_packet_bytes, 40.0);
+}
+
+TEST(FlowFeaturesV2, LifecycleExportsUseV2TimingAtFlushExpirationAndCapacity) {
+    auto sink = std::make_shared<V2Records>();
+    pipeline::PipelineImpl pipe(std::make_unique<intriqo::detection::PortScanDetector>(),
+                                Duration{1}, 1, sink, id, true);
+
+    auto first = packet(0);
+    pipe.ingest(first);
+    pipe.flush();
+    ASSERT_EQ(sink->records.size(), 1U);
+    EXPECT_EQ(sink->records[0].export_reason, features::FlowExportReason::shutdown_flush);
+    EXPECT_EQ(sink->records[0].values.packet_count, 1U);
+    EXPECT_EQ(sink->records[0].iat_gap_count, 0U);
+    EXPECT_DOUBLE_EQ(sink->records[0].values.flow_iat_std_seconds, 0.0);
+
+    sink->records.clear();
+    pipeline::PipelineImpl expired(std::make_unique<intriqo::detection::PortScanDetector>(),
+                                   Duration{1}, 4, sink, id, true);
+    expired.ingest(packet(0));
+    expired.maintain(packet(1000000000).timestamp);
+    ASSERT_EQ(sink->records.size(), 1U);
+    EXPECT_EQ(sink->records[0].export_reason, features::FlowExportReason::idle_expired);
+    EXPECT_EQ(sink->records[0].values.packet_count, 1U);
+
+    sink->records.clear();
+    pipeline::PipelineImpl capacity(std::make_unique<intriqo::detection::PortScanDetector>(),
+                                    Duration{60}, 1, sink, id, true);
+    auto second = packet(0);
+    second.dst_port = 444;
+    capacity.ingest(first);
+    capacity.ingest(second);
+    ASSERT_EQ(sink->records.size(), 1U);
+    EXPECT_EQ(sink->records[0].export_reason, features::FlowExportReason::capacity_evicted);
+    EXPECT_EQ(sink->records[0].flow_id, 1U);
+    capacity.flush();
+    ASSERT_EQ(sink->records.size(), 2U);
+    EXPECT_EQ(sink->records[1].export_reason, features::FlowExportReason::shutdown_flush);
+    EXPECT_EQ(sink->records[1].flow_id, 2U);
 }
