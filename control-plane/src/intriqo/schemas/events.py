@@ -11,7 +11,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-
 VALID_SEVERITIES = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
 
 
@@ -56,6 +55,9 @@ class SecurityEventResponse(BaseModel):
     description: str | None
     details: dict[str, Any]
     ingested_at: datetime
+    linked_incident_ids: list[str] = Field(default_factory=list)
+    linked_task_ids: list[str] = Field(default_factory=list)
+    linked_finding_ids: list[str] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

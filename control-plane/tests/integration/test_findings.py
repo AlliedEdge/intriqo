@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+
 import pytest
 
 
@@ -86,6 +87,30 @@ async def test_submit_finding_marks_task_completed(client, agent_headers, analys
 
     task_resp = await client.get(f"/api/v1/agent-tasks/{task_id}", headers=analyst_headers)
     assert task_resp.json()["status"] == "COMPLETED"
+
+
+@pytest.mark.asyncio
+async def test_failed_finding_marks_task_failed_without_resolving_incident(
+    client, agent_headers, analyst_headers
+):
+    _, incident_id, task_id = await _create_full_chain(client, agent_headers, analyst_headers)
+
+    response = await client.post(
+        "/api/v1/findings",
+        json={
+            "task_id": task_id,
+            "agent_name": "investigation_agent",
+            "status": "FAILED",
+            "confidence": 0.0,
+            "error": {"message": "controlled tool failure"},
+        },
+        headers=agent_headers,
+    )
+    assert response.status_code == 201, response.text
+    task = await client.get(f"/api/v1/agent-tasks/{task_id}", headers=analyst_headers)
+    incident = await client.get(f"/api/v1/incidents/{incident_id}", headers=analyst_headers)
+    assert task.json()["status"] == "FAILED"
+    assert incident.json()["status"] == "OPEN"
 
 
 @pytest.mark.asyncio

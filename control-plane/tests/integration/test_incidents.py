@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+
 import pytest
 
 
@@ -50,6 +51,43 @@ async def test_create_incident_with_linked_event(client, agent_headers, analyst_
 
 
 @pytest.mark.asyncio
+async def test_ml_anomaly_links_with_analyst_gate(client, agent_headers, analyst_headers):
+    event_payload = {
+        "event_id": str(uuid.uuid4()),
+        "event_type": "ML_ANOMALY",
+        "severity": "MEDIUM",
+        "timestamp": "2026-10-01T12:00:00Z",
+        "source_address": "192.0.2.10",
+        "destination_address": "198.51.100.20",
+        "details": {
+            "detection_source": "ML",
+            "detector": "isolation_forest_v2",
+            "engine_instance_id": "engine-test-1",
+            "flow_id": "8",
+        },
+    }
+    event_response = await client.post(
+        "/api/v1/events", json=event_payload, headers=agent_headers
+    )
+    assert event_response.status_code == 201, event_response.text
+
+    agent_attempt = await client.post(
+        "/api/v1/incidents",
+        json={"title": "ML anomaly", "severity": "MEDIUM", "event_ids": [event_payload["event_id"]]},
+        headers=agent_headers,
+    )
+    assert agent_attempt.status_code == 403
+
+    analyst_response = await client.post(
+        "/api/v1/incidents",
+        json={"title": "ML anomaly", "severity": "MEDIUM", "event_ids": [event_payload["event_id"]]},
+        headers=analyst_headers,
+    )
+    assert analyst_response.status_code == 201, analyst_response.text
+    assert analyst_response.json()["linked_event_ids"] == [event_payload["event_id"]]
+
+
+@pytest.mark.asyncio
 async def test_get_incident(client, analyst_headers):
     create_resp = await client.post(
         "/api/v1/incidents",
@@ -78,6 +116,20 @@ async def test_update_incident_status(client, analyst_headers):
         headers=analyst_headers,
     )
     incident_id = create_resp.json()["incident_id"]
+
+    investigating = await client.patch(
+        f"/api/v1/incidents/{incident_id}",
+        json={"status": "INVESTIGATING"},
+        headers=analyst_headers,
+    )
+    assert investigating.status_code == 200
+
+    contained = await client.patch(
+        f"/api/v1/incidents/{incident_id}",
+        json={"status": "CONTAINED"},
+        headers=analyst_headers,
+    )
+    assert contained.status_code == 200
 
     resp = await client.patch(
         f"/api/v1/incidents/{incident_id}",

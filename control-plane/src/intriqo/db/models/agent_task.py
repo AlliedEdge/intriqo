@@ -16,8 +16,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from intriqo.db.base import Base
 
 if TYPE_CHECKING:
-    from intriqo.db.models.incident import Incident
     from intriqo.db.models.finding import Finding
+    from intriqo.db.models.incident import Incident
+    from intriqo.db.models.security_event import SecurityEvent
 
 
 class AgentTask(Base):
@@ -26,6 +27,7 @@ class AgentTask(Base):
     __tablename__ = "agent_tasks"
 
     task_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     # ── Contract fields (mirrors agent_task_v1.json) ──────────────────────────
     task_type: Mapped[str] = mapped_column(
@@ -80,6 +82,11 @@ class AgentTask(Base):
         back_populates="agent_tasks",
         lazy="selectin",
     )
+    event: Mapped["SecurityEvent | None"] = relationship(
+        "SecurityEvent",
+        back_populates="agent_tasks",
+        lazy="selectin",
+    )
     findings: Mapped[list["Finding"]] = relationship(
         "Finding",
         back_populates="agent_task",
@@ -87,6 +94,12 @@ class AgentTask(Base):
     )
 
     __table_args__ = (
+        Index(
+            "uq_agent_tasks_idempotency_key",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=(idempotency_key.is_not(None)),
+        ),
         Index("ix_agent_tasks_status_priority",  "status", "priority"),
         Index("ix_agent_tasks_created_at",       "created_at"),
     )

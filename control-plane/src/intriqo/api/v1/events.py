@@ -35,6 +35,18 @@ def _to_response(event) -> SecurityEventResponse:
         description=event.description,
         details=raw.get("details", {}),
         ingested_at=event.ingested_at,
+        linked_incident_ids=[link.incident_id for link in (event.incident_links or [])],
+        linked_task_ids=[task.task_id for task in (event.agent_tasks or [])],
+        linked_finding_ids=list(
+            dict.fromkeys(
+                [finding.finding_id for finding in (event.findings or [])]
+                + [
+                    finding.finding_id
+                    for task in (event.agent_tasks or [])
+                    for finding in (task.findings or [])
+                ]
+            )
+        ),
     )
 
 
@@ -58,7 +70,8 @@ async def create_event(
             status_code=status.HTTP_409_CONFLICT,
             detail={"error": {"code": "DUPLICATE_EVENT", "message": str(e)}},
         )
-    return _to_response(event)
+    stored = await EventRepository(db).get_by_id(event.event_id)
+    return _to_response(stored or event)
 
 
 @router.get("", response_model=PaginatedResponse[SecurityEventResponse])
@@ -107,6 +120,11 @@ async def get_event(
     if event is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": {"code": "EVENT_NOT_FOUND", "message": f"Security event '{event_id}' was not found"}},
+            detail={
+                "error": {
+                    "code": "EVENT_NOT_FOUND",
+                    "message": f"Security event '{event_id}' was not found",
+                }
+            },
         )
     return _to_response(event)

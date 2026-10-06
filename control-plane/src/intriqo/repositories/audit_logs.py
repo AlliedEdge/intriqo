@@ -46,6 +46,10 @@ class AuditLogRepository:
         total = count_result.scalar() or 0
 
         offset = (page - 1) * page_size
-        query = query.order_by(AuditLog.created_at.desc()).offset(offset).limit(page_size)
+        # Timestamp precision is database-dependent; the UUID tie-breaker
+        # makes equal-time timeline rows stable for the dashboard.
+        query = query.order_by(
+            AuditLog.created_at.desc(), AuditLog.id.desc()
+        ).offset(offset).limit(page_size)
         result = await self._db.execute(query)
         return list(result.scalars().all()), total

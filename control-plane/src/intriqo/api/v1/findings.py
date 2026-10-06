@@ -24,10 +24,15 @@ def _to_response(finding) -> FindingResponse:
         agent_name=finding.agent_name,
         status=finding.status,
         confidence=finding.confidence,
+        severity=finding.severity,
+        source=finding.source,
+        event_id=finding.event_id,
+        incident_id=finding.incident_id,
         summary=finding.summary,
         findings=finding.finding_list or [],
         evidence=finding.evidence or [],
         finding_metadata=finding.finding_metadata or {},
+        provenance=finding.provenance or {},
         error=finding.error,
         created_at=finding.created_at,
     )
@@ -88,6 +93,11 @@ async def get_finding(
     if finding is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": {"code": "FINDING_NOT_FOUND", "message": f"Finding '{finding_id}' was not found"}},
+            detail={
+                "error": {
+                    "code": "FINDING_NOT_FOUND",
+                    "message": f"Finding '{finding_id}' was not found",
+                }
+            },
         )
     return _to_response(finding)

@@ -10,7 +10,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-
 VALID_TASK_TYPES = {"INVESTIGATION", "CORRELATION", "THREAT_INTEL", "RESPONSE"}
 VALID_PRIORITIES = {"LOW", "MEDIUM", "HIGH", "URGENT"}
 VALID_STATUSES   = {"PENDING", "IN_PROGRESS", "COMPLETED", "FAILED", "CANCELLED"}
@@ -20,6 +19,8 @@ class AgentTaskCreate(BaseModel):
     task_type: str = Field(..., description="INVESTIGATION | CORRELATION | THREAT_INTEL | RESPONSE")
     description: str = Field(..., min_length=1)
     priority: str = Field("MEDIUM", description="LOW | MEDIUM | HIGH | URGENT")
+    task_id: str | None = Field(None, min_length=1)
+    idempotency_key: str | None = Field(None, min_length=1, max_length=256)
     # The event and/or incident this task is derived from
     event_id: str | None = None
     incident_id: str | None = None
@@ -40,12 +41,14 @@ class AgentTaskResponse(BaseModel):
     description: str
     priority: str
     status: str
+    idempotency_key: str | None = None
     event_id: str | None
     incident_id: str | None
     context: dict[str, Any]
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None
+    finding_ids: list[str] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

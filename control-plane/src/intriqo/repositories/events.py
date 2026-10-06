@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from intriqo.db.models.agent_task import AgentTask
+from intriqo.db.models.incident import IncidentEvent
 from intriqo.db.models.security_event import SecurityEvent
 
 
@@ -36,6 +37,16 @@ class EventRepository:
             select(func.count()).where(SecurityEvent.event_id == event_id)
         )
         return (result.scalar() or 0) > 0
+
+    async def related_ids(self, event_id: str) -> tuple[list[str], list[str]]:
+        """Return incident and task IDs linked to an event."""
+        incident_result = await self._db.execute(
+            select(IncidentEvent.incident_id).where(IncidentEvent.event_id == event_id)
+        )
+        task_result = await self._db.execute(
+            select(AgentTask.task_id).where(AgentTask.event_id == event_id)
+        )
+        return list(incident_result.scalars()), list(task_result.scalars())
 
     async def list(
         self,

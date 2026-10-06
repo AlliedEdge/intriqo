@@ -24,6 +24,12 @@ class AgentTaskRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_idempotency_key(self, idempotency_key: str) -> AgentTask | None:
+        result = await self._db.execute(
+            select(AgentTask).where(AgentTask.idempotency_key == idempotency_key)
+        )
+        return result.scalar_one_or_none()
+
     async def update(self, task: AgentTask) -> AgentTask:
         await self._db.flush()
         await self._db.refresh(task)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from intriqo.auth.dependencies import AgentUser, AnalystUser
@@ -14,10 +14,10 @@ from intriqo.schemas.agent_tasks import AgentTaskCreate, AgentTaskResponse, Agen
 from intriqo.schemas.common import PaginatedResponse
 from intriqo.services.agent_task_service import (
     AgentTaskNotFoundError,
+    InvalidStatusTransitionError,
     InvalidTaskTypeError,
     create_task,
     update_task_status,
-    InvalidStatusTransitionError,
 )
 
 router = APIRouter(prefix="/agent-tasks")
@@ -30,12 +30,14 @@ def _to_response(task) -> AgentTaskResponse:
         description=task.description,
         priority=task.priority,
         status=task.status,
+        idempotency_key=task.idempotency_key,
         event_id=task.event_id,
         incident_id=task.incident_id,
         context=task.context or {},
         created_at=task.created_at,
         updated_at=task.updated_at,
         completed_at=task.completed_at,
+        finding_ids=[finding.finding_id for finding in (task.findings or [])],
     )
 
 
@@ -44,9 +46,12 @@ async def create(
     payload: AgentTaskCreate,
     user: AnalystUser,
     db: AsyncSession = Depends(get_db),
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> AgentTaskResponse:
     try:
-        task = await create_task(db, payload, actor=user.username)
+        task = await create_task(
+            db, payload, actor=user.username, idempotency_key=idempotency_key
+        )
     except InvalidTaskTypeError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -97,7 +102,12 @@ async def get_task(
     if task is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": {"code": "TASK_NOT_FOUND", "message": f"AgentTask '{task_id}' was not found"}},
+            detail={
+                "error": {
+                    "code": "TASK_NOT_FOUND",
+                    "message": f"AgentTask '{task_id}' was not found",
+                }
+            },
         )
     return _to_response(task)
 
@@ -112,7 +122,13 @@ async def update_status(
     try:
         task = await update_task_status(db, task_id, payload.status, actor=user.username)
     except AgentTaskNotFoundError as e:
-        raise HTTPException(status_code=404, detail={"error": {"code": "TASK_NOT_FOUND", "message": str(e)}})
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "TASK_NOT_FOUND", "message": str(e)}},
+        )
     except InvalidStatusTransitionError as e:
-        raise HTTPException(status_code=409, detail={"error": {"code": "INVALID_STATUS_TRANSITION", "message": str(e)}})
+        raise HTTPException(
+            status_code=409,
+            detail={"error": {"code": "INVALID_STATUS_TRANSITION", "message": str(e)}},
+        )
     return _to_response(task)

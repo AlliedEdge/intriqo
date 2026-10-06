@@ -5,8 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, Field, field_validator
 
 VALID_STATUSES  = {"OPEN", "INVESTIGATING", "CONTAINED", "RESOLVED", "CLOSED", "FALSE_POSITIVE"}
 VALID_SEVERITIES = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
@@ -22,6 +21,13 @@ class IncidentCreate(BaseModel):
 
     model_config = {"extra": "forbid"}
 
+    @field_validator("severity")
+    @classmethod
+    def validate_severity(cls, value: str) -> str:
+        if value not in VALID_SEVERITIES:
+            raise ValueError(f"severity must be one of {sorted(VALID_SEVERITIES)}")
+        return value
+
 
 class IncidentUpdate(BaseModel):
     title: str | None = None
@@ -31,6 +37,20 @@ class IncidentUpdate(BaseModel):
     incident_metadata: dict[str, Any] | None = None
 
     model_config = {"extra": "forbid"}
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str | None) -> str | None:
+        if value is not None and value not in VALID_STATUSES:
+            raise ValueError(f"status must be one of {sorted(VALID_STATUSES)}")
+        return value
+
+    @field_validator("severity")
+    @classmethod
+    def validate_update_severity(cls, value: str | None) -> str | None:
+        if value is not None and value not in VALID_SEVERITIES:
+            raise ValueError(f"severity must be one of {sorted(VALID_SEVERITIES)}")
+        return value
 
 
 class IncidentEventLink(BaseModel):
@@ -51,7 +71,15 @@ class IncidentResponse(BaseModel):
     updated_at: datetime
     resolved_at: datetime | None
     incident_metadata: dict[str, Any]
+    correlation_key: str | None = None
+    correlation_window_seconds: int | None = None
     linked_event_ids: list[str] = Field(default_factory=list)
+    linked_task_ids: list[str] = Field(default_factory=list)
+    linked_finding_ids: list[str] = Field(default_factory=list)
+    event_count: int = 0
+    task_count: int = 0
+    finding_count: int = 0
+    detection_sources: list[str] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

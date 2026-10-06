@@ -24,6 +24,15 @@ class FindingRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_task_agent(self, task_id: str, agent_name: str) -> Finding | None:
+        result = await self._db.execute(
+            select(Finding).where(
+                Finding.task_id == task_id,
+                Finding.agent_name == agent_name,
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def list(
         self,
         *,

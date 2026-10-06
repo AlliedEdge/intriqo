@@ -7,12 +7,18 @@ The IncidentEvent association table links incidents to their source events.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from intriqo.db.base import Base
+
+if TYPE_CHECKING:
+    from intriqo.db.models.agent_task import AgentTask
+    from intriqo.db.models.finding import Finding
+    from intriqo.db.models.security_event import SecurityEvent
 
 
 class Incident(Base):
@@ -46,6 +52,14 @@ class Incident(Base):
     # Metadata / tags stored as JSONB for flexibility
     incident_metadata: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
 
+    # Deterministic correlation state.  A key is only set for incidents created
+    # by the Control Plane correlator; manually created incidents remain
+    # compatible with the existing API and have NULL values here.
+    correlation_key: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
+    correlation_last_event_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # ── Relationships ─────────────────────────────────────────────────────────
     event_links: Mapped[list[IncidentEvent]] = relationship(
         "IncidentEvent",
@@ -53,8 +67,14 @@ class Incident(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    agent_tasks: Mapped[list["AgentTask"]] = relationship(
+    agent_tasks: Mapped[list[AgentTask]] = relationship(
         "AgentTask",
+        back_populates="incident",
+        lazy="selectin",
+    )
+    findings: Mapped[list[Finding]] = relationship(
+        "Finding",
+        foreign_keys="Finding.incident_id",
         back_populates="incident",
         lazy="selectin",
     )
@@ -88,3 +108,6 @@ class IncidentEvent(Base):
 
     # ── Relationships ─────────────────────────────────────────────────────────
     incident: Mapped[Incident] = relationship("Incident", back_populates="event_links")
+    event: Mapped[SecurityEvent] = relationship(
+        "SecurityEvent", back_populates="incident_links", lazy="selectin"
+    )

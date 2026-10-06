@@ -11,12 +11,18 @@ Design:
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from intriqo.db.base import Base
+
+if TYPE_CHECKING:
+    from intriqo.db.models.agent_task import AgentTask
+    from intriqo.db.models.finding import Finding
+    from intriqo.db.models.incident import IncidentEvent
 
 
 class SecurityEvent(Base):
@@ -46,6 +52,24 @@ class SecurityEvent(Base):
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
+    )
+
+    # ── Relationships ─────────────────────────────────────────────────────────
+    incident_links: Mapped[list["IncidentEvent"]] = relationship(
+        "IncidentEvent",
+        back_populates="event",
+        lazy="selectin",
+    )
+    agent_tasks: Mapped[list["AgentTask"]] = relationship(
+        "AgentTask",
+        back_populates="event",
+        lazy="selectin",
+    )
+    findings: Mapped[list["Finding"]] = relationship(
+        "Finding",
+        foreign_keys="Finding.event_id",
+        back_populates="event",
+        lazy="selectin",
     )
 
     # ── Indexes for common query patterns ────────────────────────────────────
