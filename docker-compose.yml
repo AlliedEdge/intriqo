@@ -1,12 +1,14 @@
 # =============================================================================
 # Intriqo — docker-compose.yml
 #
-# Infrastructure services for local development.
-# Application containers (engine, control-plane, agents, frontend) are defined
-# in infrastructure/compose/ and overlaid when needed.
+# PostgreSQL infrastructure for the documented local runtime.
+# The release-candidate launcher starts only this service and runs the
+# application components as host processes. Redis/pgAdmin/observability
+# definitions below are optional legacy infrastructure, not Core v1 runtime
+# dependencies.
 #
 # Usage:
-#   docker compose up -d            Start all infrastructure services
+#   docker compose up -d postgres   Start the Core v1 database dependency
 #   docker compose down             Stop and remove containers
 #   docker compose logs -f          Follow logs
 # =============================================================================
@@ -23,7 +25,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-intriqo_dev}
       POSTGRES_DB:       ${POSTGRES_DB:-intriqo}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infrastructure/postgres/migrations:/docker-entrypoint-initdb.d:ro

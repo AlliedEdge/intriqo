@@ -179,6 +179,14 @@ infrastructure/redis/data/
 infrastructure/kafka/data/
 infrastructure/observability/grafana/data/
 
+# Local host-process runtime state (PIDs, logs, service JWTs, ML ledger/output)
+.intriqo/
+.intriqo*/
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
 
 # =============================================================================
 # Frontend public media assets — large binaries served from CDN / external storage

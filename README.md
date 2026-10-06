@@ -4,9 +4,9 @@
 
   <h1>Intriqo</h1>
 
-  <p><strong>Autonomous Multi-Agent Security Operations Center</strong></p>
+  <p><strong>Reproducible local network security monitoring workflow</strong></p>
 
-  <p><em>Real-time threat detection · Autonomous investigation · Controlled response</em></p>
+  <p><em>Deterministic detection · Optional isolated ML · Analyst-auditable SOC flow</em></p>
 
   <p>
     <a href="https://github.com/AlliedEdge/intriqo/actions/workflows/ci.yml">
@@ -29,32 +29,47 @@
 
 ## What is Intriqo?
 
-Intriqo is an open-source network security monitoring and autonomous SOC platform under development. Its implemented C++ IDS runtime passively captures authorized Linux interface traffic, parses IPv4, tracks flows, and emits deterministic port-scan `SecurityEvent` JSON to the FastAPI/PostgreSQL control plane. Additional detectors, agents and response capabilities are future work; the complete autonomous vision is not implemented.
+Intriqo is an open-source network security monitoring project under development.
+Core v1 currently validates deterministic `PORT_SCAN` and `SYN_FLOOD` detection,
+an optional locked-model `ML_ANOMALY` path, and the local
+Detection → Event → Incident → Investigation → Finding → Audit workflow.
+The C++ engine observes authorized Linux traffic or offline/synthetic fixtures;
+the FastAPI Control Plane persists authenticated events in PostgreSQL; agents
+poll investigation tasks; and the React dashboard reads the same REST APIs.
 
-The diagram below describes the target platform flow; it is not a claim that
-every autonomous-agent/response stage is implemented.
+The implemented Core v1 flow is:
 
 ```
-Network Traffic
+Authorized traffic or controlled replay
       ↓
-C++ IDS Engine          ← passive capture, parsing, flow tracking, detection
-      ↓  SecurityEvent JSON
-Python Control Plane    ← FastAPI, incidents, policy enforcement, persistence
-      ↓  AgentTask
-Autonomous Agent Team   ← investigation · correlation · threat intel · response
-      ↓  PolicyDecision
-Controlled Action       ← ALLOW / DENY / HUMAN_APPROVAL
+C++ IDS Engine          ← parsing, flows, PORT_SCAN/SYN_FLOOD detection
+      ↓  authenticated SecurityEvent JSON
+FastAPI Control Plane   ← PostgreSQL, correlation, lifecycle, RBAC, audit
+      ↓  persisted AgentTask
+Investigation Agent     ← structured evidence and idempotent Finding
       ↓
-React SOC Dashboard     ← live feed, approvals, audit, agent activity
+React SOC Dashboard     ← authenticated REST views and explicit refresh
 ```
 
-> **Status:** A runnable IDS runtime and Linux live-capture vertical slice are implemented and tested. Full autonomous SOC functionality remains incomplete. See [Current Status](#current-status) and [IDS runtime documentation](docs/engine/ids-engine.md).
+> **Status:** Core v1 release-candidate validation is documented, but this is
+> not a production deployment or production-readiness claim. Live full-stack
+> capture was not exercised in the current host because libpcap is unavailable.
+> See [Current Status](#current-status), [Local Development](docs/local-development.md),
+> and [runtime recovery](docs/runtime-recovery.md).
 
 ---
 
 ## Documentation
 
 The full documentation is split into focused pages. Click any section to go straight to the detail.
+
+**New developer quick path:** [Local Development](docs/local-development.md)
+contains the prerequisites, one-command startup, health/status, logs, smoke
+test, ML enablement, recovery, and security boundaries.
+
+The analyst lifecycle is documented in [SOC Workflow](docs/soc-workflow.md),
+including correlation, state transitions, evidence, deduplication, RBAC, and
+dashboard navigation.
 
 ### 🏗 Architecture
 
@@ -86,6 +101,7 @@ The full documentation is split into focused pages. Click any section to go stra
 | [Capture Hardening Validation](docs/engine/capture-hardening-validation.md) | State policies, five-minute soaks, actual losses and versioned comparisons |
 | [FlowFeatureRecord v1](docs/engine/flow-feature-contract.md) | Versioned flow measurements, bounded JSONL sink, strict Python consumer; no ML model |
 | [Feature Boundary Validation](docs/engine/flow-feature-validation.md) | Actual regression, end-to-end, performance and memory results |
+| [Optional Isolation Forest v2 inference](docs/ml-inference-integration.md) | Locked, disabled-by-default Python ML worker and Control Plane event integration |
 
 ### 🛡 Security
 
@@ -144,33 +160,24 @@ intriqo/
 ## Quick Start
 
 **Prerequisites:** CMake ≥ 3.24, Python ≥ 3.10, Node.js ≥ 20, Docker + Compose.
+The reproducible local runtime uses PostgreSQL plus the existing host-process
+Control Plane, agent poller, optional ML worker, C++ engine, and Vite dashboard.
+It does not start Redis, Kafka, or any other broker.
 
 ```bash
-# Start infrastructure
-docker compose up -d
-
-# C++ engine — build and test
-make engine-build
-make engine-test
-
-# Python agent platform — install and test
-make agents-install
-make agents-test
-
-# Run the agents demo
-make agents-demo
-
-# Python control plane — install and test
-make control-install
-make control-test
-
-# SOC dashboard — install and start dev server
-make frontend-install
-cd frontend/dashboard && npm run dev
-
-# Run everything
-make test-all
+python3 -m venv control-plane/.venv
+control-plane/.venv/bin/pip install -e 'control-plane[dev]' -e 'agents[dev]' -e 'ml[dev]'
+(cd frontend/dashboard && npm ci)
+cmake -S . -B build/intriqo-runtime-release -DCMAKE_BUILD_TYPE=Release -DINTRIQO_BUILD_TESTS=ON
+cmake --build build/intriqo-runtime-release --parallel
+cp .env.example .env
+./scripts/start-intriqo.sh
+./scripts/status-intriqo.sh
+./scripts/smoke-intriqo.sh
 ```
+
+See [Local Development](docs/local-development.md) for ML enablement, logs,
+recovery, isolated lab traffic, and the complete check matrix.
 
 ---
 
@@ -183,23 +190,23 @@ development headers (`libpcap-dev` on Debian/Ubuntu), and authorized capture
 privileges. Offline modes require neither libpcap nor a physical interface.
 
 ```bash
-cmake -S . -B build/runtime-release -DCMAKE_BUILD_TYPE=Release -DINTRIQO_BUILD_TESTS=ON
-cmake --build build/runtime-release --parallel
-ctest --test-dir build/runtime-release --output-on-failure
+cmake -S . -B build/intriqo-runtime-release -DCMAKE_BUILD_TYPE=Release -DINTRIQO_BUILD_TESTS=ON
+cmake --build build/intriqo-runtime-release --parallel
+ctest --test-dir build/intriqo-runtime-release --output-on-failure
 
-build/runtime-release/engine/intriqo-engine --help
-build/runtime-release/engine/intriqo-engine --synthetic --output events.jsonl
-build/runtime-release/engine/intriqo-engine --pcap authorized-input.pcap --output events.jsonl
+build/intriqo-runtime-release/engine/intriqo-engine --help
+build/intriqo-runtime-release/engine/intriqo-engine --synthetic --output events.jsonl
+build/intriqo-runtime-release/engine/intriqo-engine --pcap authorized-input.pcap --output events.jsonl
 # Run only with approved privileges and an interface you are authorized to observe:
-build/runtime-release/engine/intriqo-engine --interface eth0 --filter "tcp" --no-promiscuous
+build/intriqo-runtime-release/engine/intriqo-engine --interface eth0 --filter "tcp" --no-promiscuous
 
 # Token comes from the existing authentication/service-identity API; never a CLI argument.
 export INTRIQO_CONTROL_PLANE_URL=http://127.0.0.1:8000
 export INTRIQO_CONTROL_PLANE_TOKEN="$IDS_ENGINE_JWT"
-build/runtime-release/engine/intriqo-engine --interface eth0 --filter "tcp" --sink http
+build/intriqo-runtime-release/engine/intriqo-engine --interface eth0 --filter "tcp" --sink http
 
 # Reproducible Release benchmark (full raw-packet runtime, not pre-parsed input):
-python3 scripts/benchmark/runtime_benchmark.py --build build/runtime-release
+python3 scripts/benchmark/runtime_benchmark.py --build build/intriqo-runtime-release
 ```
 
 `--sink file|http`, `--output`, `--snaplen`, `--no-promiscuous`,
@@ -246,7 +253,7 @@ capture loss; the optional queue relieved the tested bounded stall only.
 
 ```bash
 # Short deterministic state/expiry/correctness exercise; no capture privileges:
-build/runtime-release/engine/intriqo-state-soak --duration-seconds 3 \
+build/intriqo-runtime-release/engine/intriqo-state-soak --duration-seconds 3 \
   --rate 10000 --max-active-flows 256 --max-tracked-sources 64 \
   --max-tracked-observations 128 --flow-idle-timeout 2
 ```
@@ -257,14 +264,18 @@ all changed files and 300/1800/3600-second local-only release procedures.
 
 | Layer | Status | Details |
 |---|---|---|
-| **C++ Engine** | 🟢 Runtime/state hardening implemented | Linux libpcap, synthetic/classic PCAP, bounded flows/detector state, optional bounded sink queue, signals/counters; 70 CTest entries including all original 19 tests |
-| **Python Agents** | 🟢 Foundation complete | `intriqo_agents` package, 79 tests passing |
-| **Control Plane** | 🟢 Phase 1 complete | FastAPI, PostgreSQL persistence, JWT/RBAC, events, incidents, tasks, findings, audit logs |
-| **Frontend** | 🟡 Structure complete | Vite + React 18, SOC feature dirs, routing shell |
-| **Contracts** | 🟢 Complete | 5 JSON Schema files across all boundaries |
-| **CI / Tooling** | 🟢 Complete | cpp, python, frontend, security workflows |
+| **C++ Engine** | 🟢 Validated | Deterministic `PORT_SCAN`/`SYN_FLOOD`, synthetic/classic-PCAP paths, bounded state and event sink; live capture remains environment-dependent |
+| **Optional ML** | 🟡 Experimental | Locked native-v2 Isolation Forest worker, disabled by default, hash-checked, analyst-promoted to incidents; not a production accuracy claim |
+| **Control Plane** | 🟢 Core v1 workflow | FastAPI, PostgreSQL persistence, JWT/RBAC, correlation, incident lifecycle, tasks, findings, and audit logs |
+| **Agents** | 🟢 Core v1 investigation | Polling agent with idempotent retries and structured detector-specific evidence |
+| **Frontend** | 🟢 Core v1 navigation | Authenticated REST dashboard for events, incidents, tasks, findings, evidence, timeline, provenance, and audit |
+| **Documentation/tooling** | 🟢 Local reproducibility | Documented startup/status/smoke/recovery commands and controlled validation procedures |
 
-**Future/deferred in this IDS phase:** additional detectors · missing agents · LLM integration · response/blocking · packet injection · Kafka/Redis/Kubernetes · streaming UI · Prometheus. Existing agent/control-plane/frontend responsibilities are unchanged.
+**Not supported or proven:** IPS/prevention, automated remediation or blocking,
+external ML generalization, production deployment, large-scale throughput,
+network-wide visibility without authorized sensor placement, or a live full-stack
+runtime test on a host without libpcap. Kafka, Redis, Kubernetes, streaming UI,
+and additional detectors remain deferred.
 
 ---
 
