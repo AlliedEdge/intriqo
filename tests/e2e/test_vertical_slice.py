@@ -38,6 +38,12 @@ def test_cpp_to_control_plane_vertical_slice() -> None:
         pytest.fail(f"Build the C++ demo first: {DEMO}")
     env = os.environ.copy()
     env["PYTHONPATH"] = str(CONTROL_PLANE / "src")
+    # Keep this isolated real-process test independent of a developer's
+    # control-plane/.env verification policy; it uses unique local test users
+    # and does not exercise outbound email delivery.
+    env["APP_ENV"] = "test"
+    env["REQUIRE_EMAIL_VERIFICATION"] = "false"
+    env["RESEND_API_KEY"] = ""
     server = subprocess.Popen([
         sys.executable, "-m", "uvicorn",
         "intriqo.api.app:app", "--host", "127.0.0.1", "--port", "8765",
@@ -109,7 +115,11 @@ def test_cpp_to_control_plane_vertical_slice() -> None:
             })
             assert incident_response.status_code == 201, incident_response.text
             incident = incident_response.json()
-            assert incident["linked_event_ids"] == [event_id]
+            # A prior local event with the same deterministic correlation key
+            # may already be within the documented window. Manual analyst
+            # linking must retain the fresh event without requiring an empty
+            # database or discarding the correlated event.
+            assert event_id in incident["linked_event_ids"]
 
             task_response = client.post("/api/v1/agent-tasks", headers=analyst_headers, json={
                 "task_type": "INVESTIGATION", "description": "Investigate this security incident.",

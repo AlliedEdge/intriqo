@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Annotated, Literal
+from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import Annotated, BinaryIO, Literal
 
 from pydantic import Field, ValidationError, model_validator
 
@@ -107,7 +109,8 @@ class FlowFeatureRecordV2(_WireModel):
         return self
 
 
-def flow_feature_v2_json_schema() -> dict[str, object]:
+def flow_feature_json_schema_v2() -> dict[str, object]:
+    """Return the draft-07 schema for the explicit v2 wire contract."""
     schema = FlowFeatureRecordV2.model_json_schema(ref_template="#/definitions/{model}")
     schema["definitions"] = schema.pop("$defs")
     schema["$schema"] = "http://json-schema.org/draft-07/schema#"
@@ -127,6 +130,11 @@ def flow_feature_v2_json_schema() -> dict[str, object]:
         "Roundoff checks use rtol=1e-12, atol=1e-15."
     )
     return schema
+
+
+# Retain the name used by the initial v2 implementation while making the
+# versioned public name unambiguous beside flow_feature_json_schema (v1).
+flow_feature_v2_json_schema = flow_feature_json_schema_v2
 
 
 def parse_flow_feature_record_v2(raw: str | bytes) -> FlowFeatureRecordV2:
@@ -164,6 +172,53 @@ def parse_flow_feature_record_v2(raw: str | bytes) -> FlowFeatureRecordV2:
         # The shared domain error stays payload-free, but must name v2 accurately.
         error.args = ("record violates flow_features.v2 contract",)
         raise error from None
+
+
+@dataclass(frozen=True)
+class FlowFeatureLineV2:
+    """One v2 JSONL line and its payload-free validation result."""
+
+    line_number: int
+    record: FlowFeatureRecordV2 | None
+    error: FlowFeatureError | None
+
+
+def read_line_v2(stream: BinaryIO) -> bytes | None:
+    """Read one bounded v2 JSONL line without buffering oversized input."""
+    chunk = stream.readline(MAX_RECORD_BYTES + 3)
+    if not chunk:
+        return None
+    if chunk.endswith(b"\n"):
+        terminator_size = 2 if chunk.endswith(b"\r\n") else 1
+        if len(chunk) - terminator_size > MAX_RECORD_BYTES:
+            raise FlowFeatureError("record_too_large")
+        return chunk
+    if len(chunk) <= MAX_RECORD_BYTES:
+        return chunk
+    while chunk and not chunk.endswith(b"\n"):
+        chunk = stream.readline(MAX_RECORD_BYTES + 3)
+    raise FlowFeatureError("record_too_large")
+
+
+def iter_flow_feature_records_v2(stream: BinaryIO) -> Iterator[FlowFeatureLineV2]:
+    """Yield a typed result for every physical v2 JSONL line; continue on errors."""
+    line_number = 0
+    while True:
+        try:
+            raw = read_line_v2(stream)
+        except FlowFeatureError as error:
+            line_number += 1
+            yield FlowFeatureLineV2(line_number, None, error)
+            continue
+        if raw is None:
+            return
+        line_number += 1
+        try:
+            record = parse_flow_feature_record_v2(raw)
+        except FlowFeatureError as error:
+            yield FlowFeatureLineV2(line_number, None, error)
+        else:
+            yield FlowFeatureLineV2(line_number, record, None)
 
 
 def project_flow_features_v2(record: FlowFeatureRecordV2) -> tuple[float, ...]:

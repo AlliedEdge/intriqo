@@ -1,6 +1,7 @@
 """Version isolation, honest native projection, and strict v2 transport guards."""
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 
@@ -8,7 +9,10 @@ import pytest
 from intriqo_ml.flow_features import FlowFeatureError, parse_flow_feature_record
 from intriqo_ml.flow_features_v2 import (
     FEATURES_V2,
+    FlowFeatureLineV2,
+    flow_feature_json_schema_v2,
     flow_feature_v2_json_schema,
+    iter_flow_feature_records_v2,
     parse_flow_feature_record_v2,
     project_flow_features_v2,
 )
@@ -51,6 +55,20 @@ def test_v2_round_trip_and_metadata_is_not_projected():
     projected = project_flow_features_v2(record)
     assert len(projected) == 9
     assert projected == tuple(float(value["features"][name]) for name in FEATURES_V2)
+
+
+def test_v2_public_names_and_jsonl_iterator_are_versioned():
+    value = valid_v2()
+    raw = json.dumps(value).encode()
+    assert flow_feature_v2_json_schema is flow_feature_json_schema_v2
+    assert flow_feature_v2_json_schema() == flow_feature_json_schema_v2()
+    results = list(iter_flow_feature_records_v2(io.BytesIO(raw + b"\n{}\n" + raw)))
+    assert [result.line_number for result in results] == [1, 2, 3]
+    assert isinstance(results[0], FlowFeatureLineV2)
+    assert results[0].record is not None and results[0].error is None
+    assert results[1].record is None and results[1].error is not None
+    assert results[1].error.code == "invalid_record"
+    assert results[2].record is not None and results[2].error is None
 
 
 def test_v1_stays_v1_only_and_v2_stays_v2_only():
