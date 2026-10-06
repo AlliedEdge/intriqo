@@ -21,6 +21,11 @@ describe('format helpers', () => {
     expect(findingSeverity(withoutSeverity)).toBeNull()
   })
 
+  it('prefers the additive finding severity field when present', () => {
+    const finding = { severity: 'CRITICAL', finding_metadata: { severity: 'LOW' } } as never
+    expect(findingSeverity(finding)).toBe('CRITICAL')
+  })
+
   it('normalizes local filter dates to ISO only when valid', () => {
     expect(toIsoDateTime('2026-10-01T12:00:00Z')).toBe('2026-10-01T12:00:00.000Z')
     expect(toIsoDateTime('not-a-date')).toBeUndefined()

@@ -639,6 +639,12 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .compact-list-row > span:last-child { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
 
+.provenance-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+
+.provenance-inline .badge { font-size: 0.56rem; }
+
+.table-counts { color: var(--text-muted); font-size: 0.64rem; white-space: nowrap; }
+
 .timeline { padding: 5px 18px 13px; }
 
 .timeline-entry { display: grid; grid-template-columns: 25px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 50px; border-bottom: 1px solid rgba(28, 48, 61, 0.7); }
@@ -698,6 +704,14 @@ select { padding-right: 28px; }
 .workflow-count strong { color: var(--text-primary); font-size: 1.15rem; }
 
 .workflow-count > span:last-child { color: var(--text-muted); font-size: 0.64rem; }
+
+.workflow-state { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 18px 16px; }
+
+.workflow-state > div { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+
+.workflow-state strong { color: var(--text-secondary); font-size: 0.75rem; }
+
+.workflow-state > div > span { color: var(--text-muted); font-size: 0.66rem; line-height: 1.45; }
 
 .finding-list { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0 18px 10px; list-style: none; }
 

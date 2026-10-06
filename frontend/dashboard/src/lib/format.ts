@@ -61,7 +61,7 @@ export function prettyJson(value: unknown): string {
 }
 
 export function findingSeverity(finding: Finding): string | null {
-  const candidate = finding.finding_metadata.severity
+  const candidate = finding.severity ?? finding.finding_metadata.severity
   return typeof candidate === 'string' ? candidate : null
 }
 
