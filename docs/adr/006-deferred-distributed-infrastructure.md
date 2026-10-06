@@ -15,10 +15,10 @@ proven correct.
 
 Distributed infrastructure is introduced **only when benchmarks justify it**.
 
-**Current infrastructure (docker-compose.yml):**
-- PostgreSQL — persistence (required from day one)
-- Redis — optional caching (available, not yet wired)
-- Prometheus + Grafana — observability (optional profile)
+**Current infrastructure definitions (docker-compose.yml):**
+- PostgreSQL — persistence (required from day one and started by Core v1)
+- Redis — optional legacy definition, not wired into Core v1
+- Prometheus + Grafana — optional observability profile, not Core v1 dependencies
 
 **Explicitly deferred until justified by measurement:**
 - Kafka — will be introduced when event volume exceeds what PostgreSQL
@@ -36,7 +36,9 @@ can be wired in without restructuring the repository.
 ## Consequences
 
 **Positive**
-- The system is understandable and runnable with `docker compose up`.
+- The system is understandable and runnable with the documented
+  `./scripts/start-intriqo.sh` launcher; it starts PostgreSQL with Compose and
+  runs the application components as host processes.
 - Development iteration is fast — no Kafka broker, no schema registry, no
   consumer group management to debug before the first detector works.
 - The agent↔control-plane boundary is defined as a typed Python interface now,

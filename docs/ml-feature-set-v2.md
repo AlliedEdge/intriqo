@@ -4,6 +4,8 @@
 
 **Native v2 contract and controlled PCAP prototype are implemented and verified. Real CIC-IDS2017 reconstruction, v2 model fitting, and validation comparison are blocked on capture availability and verified native-flow labels. No v2 model was trained. The held-out test set was not opened or evaluated.**
 
+The implementation status is intentionally split into independent gates: implementation and contract are complete; the native test suite covers the contract and the C++→file→Python boundary; dataset reconstruction is blocked because authoritative Monday/Tuesday PCAPs and native-flow label alignment are unavailable; model training is **blocked**; and the held-out test set remains **sealed**.
+
 V1's wire model, schema, serializer, parser, fixtures, prepared data, baseline implementation, checkpoint, threshold, validation results, and documentation remain frozen. The new opt-in stream is `flow_features.v2`; v1 is still the default. No ML inference or new fields were added to SecurityEvent. Packet acceptance, canonical flow direction, FIN/RST behavior, and deterministic detectors are unchanged.
 
 This phase implements the user's **population** IAT standard deviation requirement. The investigation's earlier sample-standard-deviation proposal and CICFlowMeter sample statistics are not substituted into this contract.
@@ -87,7 +89,7 @@ Wire envelope:
 
 The strings above illustrate the envelope shape, not a valid sample record. `measurements` preserves native audit evidence; it is not an extra model feature set. Native counters/rates/size means and the projected formulas are checked, along with timestamp duration, protocol/handshake invariants, finite values, and timing population bounds.
 
-The new `FlowFeatureRecordV2` and `parse_flow_feature_record_v2` are imported explicitly from `intriqo_ml.flow_features_v2`. The old parser stays v1-only and rejects v2. The v2 parser rejects v1/unsupported versions, extra fields, duplicate keys, nonfinite numbers, invalid integer tokens, malformed dates, and invalid native evidence. It reuses existing strict bounded transport guards: 8192 bytes and 16 nested containers. It never normalizes accepted numeric values or routes v2 through a modified v1 parser.
+The new `FlowFeatureRecordV2`, `parse_flow_feature_record_v2`, `iter_flow_feature_records_v2`, and `flow_feature_json_schema_v2` are imported explicitly from `intriqo_ml.flow_features_v2` (the initial `flow_feature_v2_json_schema` spelling remains an alias). The old parser stays v1-only and rejects v2. The v2 parser rejects v1/unsupported versions, extra fields, duplicate keys, nonfinite numbers, invalid integer tokens, malformed dates, and invalid native evidence. It reuses existing strict bounded transport guards: 8192 bytes and 16 nested containers. It never normalizes accepted numeric values or routes v2 through a modified v1 parser.
 
 Opt-in engine example:
 
@@ -159,13 +161,13 @@ V2 validation metrics and family recall are **unavailable**, not zero or improve
 ## Regression evidence
 
 - CMake Release build passed with native live/PCAP support. The initial missing-header build failure was a stale cached `/tmp/opencode/intriqo-pcap-dev/usr/include` path. Matching `libpcap0.8-dev` 1.10.6 headers were downloaded/extracted locally to restore that path; no system install or source workaround was applied.
-- **154 C++ tests passed**, including 13 v2 tests and all existing suites. V2-enabled and disabled pipelines produce identical deterministic SecurityEvent evidence (apart from independent event UUIDs), and late-timestamp v1 serialization is identical with timing disabled/enabled.
-- **573 ML tests passed, 1 existing real-data opt-in test skipped.** All 59 v2 wire tests and 6 real-process v2 integration/prototype cases passed. The real-data smoke test remained disabled because its full preparation would touch the held-out set.
-- **7 existing E2E tests passed, 6 existing opt-in live-capture cases skipped** under their normal capability/opt-in gate. No xfails were introduced.
+- **156 C++ Release tests passed**, including the native v2 contract/lifecycle additions and all existing suites. The same 156 tests passed under the ASan+UBSan build and under the dedicated UBSan build. V2-enabled and disabled pipelines produce identical deterministic SecurityEvent evidence (apart from independent event UUIDs), and late-timestamp v1 serialization is identical with timing disabled/enabled.
+- **574 ML tests passed, 1 existing real-data opt-in test skipped.** All v2 wire tests and 6 real-process v2 integration/prototype cases passed. The real-data smoke test remained disabled because its full preparation would touch the held-out set.
+- **The focused native feature-boundary E2E passed 6/6.** The broader repository E2E passed **7**, with 6 opt-in live-capture cases skipped. An initial run saw a transient control-plane vertical-slice 404; the isolated test and the full rerun both passed, so no v2-related failure or production change was required.
 - **131 Control Plane tests passed.** **81 Agent tests and 4 Agent subtests passed.** Neither system's production code was changed.
 - Strict mypy passed for all 13 ML source files; Ruff passed for ML source/tests; `git diff --check` passed.
 - Before/after SHA-256 checks cover 24 frozen v1 files, including all original external fit/diagnostic artifacts, serializer/schema/parser, preparation/mapping, model implementation, fixtures, and baseline documentation. No held-out data were opened for hashing.
-- `/tmp/opencode/native-v2-ml-open.trace` and `/tmp/opencode/native-v2-prototype-verified-open.trace` record the real test/prototype file accesses; no real held-out dataset access occurred. Full receipts are retained in `ml/artifacts/feature-analysis/v2/native_v2_implementation_status.json`.
+- `/tmp/opencode/native-v2-ml-open.trace` and `/tmp/opencode/native-v2-prototype-verified-open.trace` record the real test/prototype file accesses; no real held-out dataset access occurred. The current validation counts and the unrelated broader-E2E limitation are retained in `ml/artifacts/feature-analysis/v2/native_v2_implementation_status.json`.
 
 Commands used:
 

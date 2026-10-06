@@ -206,21 +206,18 @@ stateDiagram-v2
 
 ## Deployment Topology
 
-### Local Development (current)
+### Local Development (current Core v1 runtime)
 
 ```
-docker compose up
-  ├── postgres:5432
-  ├── redis:6379
-  └── (optional profile) prometheus:9090, grafana:3000
+./scripts/start-intriqo.sh
+  ├── postgres:5432                         (Docker Compose)
+  ├── Control Plane:8000                    (host process)
+  ├── Agents, optional ML, C++ engine       (host processes)
+  └── Vite dashboard:5173                   (host process)
 
-Host processes:
-  ├── uvicorn intriqo.api.app:app --reload --port 8000
-  ├── python -m intriqo_agents.orchestrator.main  (demo)
-  └── cd frontend/dashboard && npm run dev  (:5173)
-
-Engine:
-  make engine-build && ./engine/build/intriqo_engine  (when implemented)
+Core v1 does not require Redis, Kafka, Kubernetes, or a broker. Optional
+Compose service definitions are retained for future/deferred infrastructure
+experiments and are not started by the documented launcher.
 ```
 
 ### Target Production Topology

@@ -1,20 +1,19 @@
 # Deployment Architecture
 
-## Local development (current)
+## Local development (current Core v1 runtime)
 
 ```
-docker compose up
-  ├── postgres:5432
-  ├── redis:6379
-  └── (optional) prometheus:9090, grafana:3000
+./scripts/start-intriqo.sh
+  ├── postgres:5432                         (Docker Compose)
+  ├── Control Plane:8000                    (host process)
+  ├── Agents                              (host process)
+  ├── optional ML worker                  (host process)
+  ├── C++ engine                          (host process)
+  └── Vite dashboard:5173                 (host process)
 
-Host processes (run manually or via Makefile):
-  ├── uvicorn intriqo.api.app:app --port 8000   (control plane)
-  ├── python -m intriqo_agents.orchestrator.main (agents — demo only)
-  └── npm run dev (frontend — Vite dev server :5173)
-
-Engine:
-  make engine-build && ./engine/build/intriqo_engine  (when implemented)
+Redis, pgAdmin, Prometheus, Grafana, Kafka, and Kubernetes are not Core v1
+runtime dependencies. The root Compose file retains optional legacy service
+definitions, but the documented launcher does not start them.
 ```
 
 ## Target production topology
@@ -30,8 +29,8 @@ Engine:
 └─────────────────┬────────────────────────────────────────────┘
                   │  SecurityEvent JSON HTTP/gRPC
 ┌─────────────────▼────────────────────────────────────────────┐
-│  Control Plane (Python/FastAPI)  — standard container         │
-│  Requires: PostgreSQL, Redis                                  │
+│  Control Plane (Python/FastAPI)  — host process in Core v1    │
+│  Requires: PostgreSQL                                        │
 └──────┬──────────────────────────────────┬────────────────────┘
        │  AgentTask                       │  REST/WebSocket
 ┌──────▼────────────┐          ┌──────────▼───────────────────┐
