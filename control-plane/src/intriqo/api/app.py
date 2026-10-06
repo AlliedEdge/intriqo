@@ -16,6 +16,21 @@ from intriqo.config import get_settings
 logger = logging.getLogger("intriqo.api")
 
 
+async def _database_status() -> str:
+    """Return the current PostgreSQL dependency state."""
+    try:
+        from sqlalchemy import text
+
+        from intriqo.db.session import get_engine
+
+        engine = get_engine()
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception:
+        return "error"
+    return "ok"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown."""
@@ -82,9 +97,9 @@ def create_app() -> FastAPI:
         That object is not JSON-serialisable, so we sanitise each error dict before
         building the response.
         """
-        def _sanitise(err: dict) -> dict:
+        def _sanitise(err: dict[str, Any]) -> dict[str, Any]:
             """Remove non-serialisable values (e.g. exception instances) from one error dict."""
-            safe = {}
+            safe: dict[str, Any] = {}
             for k, v in err.items():
                 if k == "input" and request.url.path.startswith("/api/v1/auth/"):
                     continue
@@ -129,17 +144,7 @@ def create_app() -> FastAPI:
     @app.get("/health", tags=["health"])
     async def health_check() -> dict[str, Any]:
         """Basic health check — reports application status and DB connectivity."""
-        db_status = "unknown"
-        try:
-            from sqlalchemy import text
-
-            from intriqo.db.session import get_engine
-            engine = get_engine()
-            async with engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
-            db_status = "ok"
-        except Exception:
-            db_status = "error"
+        db_status = await _database_status()
 
         overall = "ok" if db_status == "ok" else "degraded"
         return {
@@ -148,6 +153,21 @@ def create_app() -> FastAPI:
             "version": "0.1.0",
             "checks": {"database": db_status},
         }
+
+    @app.get("/ready", tags=["health"])
+    async def readiness_check() -> JSONResponse:
+        """Report whether the Control Plane can serve requests that need PostgreSQL."""
+        db_status = await _database_status()
+        ready = db_status == "ok"
+        return JSONResponse(
+            status_code=status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "ready" if ready else "not_ready",
+                "service": "intriqo-control-plane",
+                "version": "0.1.0",
+                "checks": {"database": db_status},
+            },
+        )
 
     # ── Register v1 routers ───────────────────────────────────────────────────
     from intriqo.api.v1.router import v1_router  # noqa: PLC0415
