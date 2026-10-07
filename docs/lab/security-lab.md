@@ -1,5 +1,8 @@
 # Controlled Security Laboratory
 
+> For the persistent namespace/TAP live demonstration, use
+> [INTRIQO Demo Lab](../demo-lab.md) and [Demo Runbook](../demo-runbook.md).
+
 ← [Back to README](../../README.md)
 
 ---

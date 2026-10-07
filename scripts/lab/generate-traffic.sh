@@ -1,24 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TARGET_HOST="${1:-127.0.0.1}"
-TRAFFIC_TYPE="${2:-port-scan}"
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
-echo "=== Generating synthetic security traffic ==="
-echo "Target: $TARGET_HOST, Type: $TRAFFIC_TYPE"
+cat <<'EOF'
+The legacy target-taking traffic generator has been removed.  Demo traffic is
+fixed to the owned Intriqo lab pair and always validates the real topology.
+EOF
 
-case "$TRAFFIC_TYPE" in
-    "port-scan")
-        echo "Simulating SYN scan across common ports..."
-        if command -v nmap >/dev/null 2>&1; then
-            nmap -sS -p 21,22,23,25,80,443,3306,8080 "$TARGET_HOST" || true
-        else
-            echo "nmap not installed. Generating mock flow logs instead..."
-            python3 -c "print('Simulated 20 port connections from 192.168.1.100 to $TARGET_HOST')"
-        fi
+if [[ $# -eq 1 && ( "$1" == "-h" || "$1" == "--help" ) ]]; then
+    echo "Usage: scripts/lab/generate-traffic.sh {port-scan|syn-flood}"
+    exit 0
+fi
+if [[ $# -ne 1 ]]; then
+    echo "Usage: scripts/lab/generate-traffic.sh {port-scan|syn-flood}" >&2
+    exit 2
+fi
+
+case "$1" in
+    port-scan|syn-flood)
+        exec "$SCRIPT_DIR/generate-demo-traffic.sh" "$1"
         ;;
     *)
-        echo "Unknown traffic type: $TRAFFIC_TYPE. Supported: port-scan"
-        exit 1
+        echo "Unknown traffic type: $1" >&2
+        echo "Supported: port-scan, syn-flood" >&2
+        exit 2
         ;;
 esac

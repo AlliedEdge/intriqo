@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentTask, SecurityEvent } from '@/types/api'
-import { eventDetectionSource, eventDetector, eventRelationshipIds, investigationState, taskFindingIds } from './soc'
+import { allowedIncidentStatusTransitions, eventDetectionSource, eventDetector, eventRelationshipIds, findingType, investigationState, taskFindingIds } from './soc'
 
 const event = (overrides: Partial<SecurityEvent> = {}): SecurityEvent => ({
   event_id: 'event-1',
@@ -50,5 +50,19 @@ describe('SOC relationship and provenance helpers', () => {
     expect(investigationState([task('IN_PROGRESS')])).toBe('IN_PROGRESS')
     expect(investigationState([task('COMPLETED')])).toBe('COMPLETED')
     expect(investigationState([task('FAILED')])).toBe('BLOCKED')
+  })
+
+  it('exposes only the control-plane incident lifecycle transitions', () => {
+    expect(allowedIncidentStatusTransitions('OPEN')).toEqual(['INVESTIGATING', 'FALSE_POSITIVE'])
+    expect(allowedIncidentStatusTransitions('INVESTIGATING')).toEqual(['CONTAINED', 'FALSE_POSITIVE'])
+    expect(allowedIncidentStatusTransitions('CONTAINED')).toEqual(['RESOLVED', 'FALSE_POSITIVE'])
+    expect(allowedIncidentStatusTransitions('RESOLVED')).toEqual(['CLOSED'])
+    expect(allowedIncidentStatusTransitions('CLOSED')).toEqual([])
+    expect(allowedIncidentStatusTransitions('UNKNOWN')).toEqual([])
+  })
+
+  it('reads the finding type from finding metadata', () => {
+    expect(findingType({ finding_metadata: { finding_type: 'ML_ANOMALY_REVIEW' } } as never)).toBe('ML_ANOMALY_REVIEW')
+    expect(findingType({ finding_metadata: {} } as never)).toBeNull()
   })
 })

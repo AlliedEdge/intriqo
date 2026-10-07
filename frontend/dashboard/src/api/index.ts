@@ -1,8 +1,8 @@
 import { queryString, request } from './client'
 import type {
-  AgentTask, AuditListParams, AuditLog, CurrentUser, EventListParams, Finding,
-  FindingListParams, Incident, IncidentListParams, Paginated, SecurityEvent,
-  MessageResponse, RegisterRequest, RegisteredUser, TaskListParams, TokenResponse,
+  AgentTask, AgentTaskCreate, AuditListParams, AuditLog, CurrentUser, EventListParams, Finding,
+  FindingListParams, Incident, IncidentCreate, IncidentListParams, Paginated, SecurityEvent,
+  IncidentStatus, MessageResponse, RegisterRequest, RegisteredUser, TaskListParams, TokenResponse,
 } from '@/types/api'
 
 export const authApi = {
@@ -33,12 +33,14 @@ export const eventsApi = {
 }
 
 export const incidentsApi = {
+  create: (payload: IncidentCreate) => request<Incident>('/incidents', { method: 'POST', body: payload }),
   list: (params: IncidentListParams = {}, signal?: AbortSignal) => request<Paginated<Incident>>(`/incidents${queryString(params)}`, { signal }),
   get: (id: string, signal?: AbortSignal) => request<Incident>(`/incidents/${encodeURIComponent(id)}`, { signal }),
-  updateStatus: (id: string, status: string) => request<Incident>(`/incidents/${encodeURIComponent(id)}`, { method: 'PATCH', body: { status } }),
+  updateStatus: (id: string, status: IncidentStatus) => request<Incident>(`/incidents/${encodeURIComponent(id)}`, { method: 'PATCH', body: { status } }),
 }
 
 export const tasksApi = {
+  create: (payload: AgentTaskCreate) => request<AgentTask>('/agent-tasks', { method: 'POST', body: payload }),
   list: (params: TaskListParams = {}, signal?: AbortSignal) => request<Paginated<AgentTask>>(`/agent-tasks${queryString(params)}`, { signal }),
   get: (id: string, signal?: AbortSignal) => request<AgentTask>(`/agent-tasks/${encodeURIComponent(id)}`, { signal }),
 }

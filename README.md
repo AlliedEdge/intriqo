@@ -115,6 +115,8 @@ dashboard navigation.
 | Page | Description |
 |---|---|
 | [Controlled Security Lab](docs/lab/security-lab.md) | Lab environment, attack scenarios, PCAP tooling |
+| [INTRIQO Demo Lab](docs/demo-lab.md) | Persistent isolated namespaces, TAP mirror, live sensor path |
+| [Demo Runbook](docs/demo-runbook.md) | 10–15 minute analyst demonstration |
 
 ### 📐 Architecture Decisions
 
@@ -177,7 +179,9 @@ cp .env.example .env
 ```
 
 See [Local Development](docs/local-development.md) for ML enablement, logs,
-recovery, isolated lab traffic, and the complete check matrix.
+recovery, isolated lab traffic, and the complete check matrix. The focused live
+demonstration is documented in [Demo Lab](docs/demo-lab.md) and the
+[Demo Runbook](docs/demo-runbook.md).
 
 ---
 

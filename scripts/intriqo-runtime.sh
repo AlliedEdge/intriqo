@@ -189,6 +189,7 @@ intriqo_validate_config() {
     local engine_mode=${INTRIQO_ENGINE_MODE:-synthetic}
     local engine_sink=${INTRIQO_ENGINE_SINK:-file}
     local ml_enabled=${INTRIQO_ML_ENABLED:-false}
+    local engine_namespace=${INTRIQO_ENGINE_NAMESPACE:-}
     local value path
 
     intriqo_is_bool "${DEBUG:-false}" || { intriqo_die "DEBUG must be true/false"; return 1; }
@@ -198,6 +199,7 @@ intriqo_validate_config() {
     intriqo_is_bool "${INTRIQO_ENGINE_NO_PROMISCUOUS:-false}" || { intriqo_die "INTRIQO_ENGINE_NO_PROMISCUOUS must be true/false"; return 1; }
     intriqo_is_bool "$ml_enabled" || { intriqo_die "INTRIQO_ML_ENABLED must be true/false"; return 1; }
     intriqo_is_bool "${INTRIQO_API_RELOAD:-false}" || { intriqo_die "INTRIQO_API_RELOAD must be true/false"; return 1; }
+    intriqo_is_bool "${INTRIQO_ENGINE_USE_SUDO:-false}" || { intriqo_die "INTRIQO_ENGINE_USE_SUDO must be true/false"; return 1; }
     intriqo_require_port INTRIQO_POSTGRES_PORT "$pg_port"
     intriqo_require_port INTRIQO_API_PORT "$api_port"
     intriqo_require_port INTRIQO_FRONTEND_PORT "$frontend_port"
@@ -234,6 +236,22 @@ intriqo_validate_config() {
                 ;;
             *) intriqo_die "INTRIQO_ENGINE_MODE must be synthetic, pcap, or interface"; return 1 ;;
         esac
+        if [[ -n "$engine_namespace" ]]; then
+            [[ "$engine_namespace" != *[[:space:]]* && "$engine_namespace" != */* ]] || {
+                intriqo_die "INTRIQO_ENGINE_NAMESPACE must be a namespace name without whitespace or slashes"
+                return 1
+            }
+            command -v ip >/dev/null 2>&1 || {
+                intriqo_die "INTRIQO_ENGINE_NAMESPACE requires the ip command"
+                return 1
+            }
+            if intriqo_bool "${INTRIQO_ENGINE_USE_SUDO:-false}"; then
+                command -v sudo >/dev/null 2>&1 || {
+                    intriqo_die "INTRIQO_ENGINE_USE_SUDO=true requires sudo"
+                    return 1
+                }
+            fi
+        fi
         local engine_bin
         engine_bin=$(intriqo_engine_binary "$(intriqo_bool "$ml_enabled" && echo true || echo false)")
         [[ -n "$engine_bin" && -x "$engine_bin" && ! -L "$engine_bin" ]] || {
@@ -490,6 +508,23 @@ intriqo_start_process() {
     printf '%s\n' "$pid"
 }
 
+intriqo_start_privileged_process() {
+    local service=$1 log_file=$2
+    shift 2
+    intriqo_service_running "$service" && { intriqo_die "$service is already running"; return 1; }
+    intriqo_remove_stale_pid "$service"
+    : > "$log_file"
+    # Authenticate sudo before creating the detached session.  With the
+    # default tty-scoped sudo timestamp policy, invoking sudo from inside an
+    # outer setsid session can require an interactive authentication even when
+    # sudo -n succeeds in the caller.  The privileged command creates the
+    # detached session after sudo has accepted the caller's cached grant.
+    sudo -n -- setsid --wait -- "$@" >> "$log_file" 2>&1 < /dev/null &
+    local pid=$!
+    printf '%s\n' "$pid" > "$INTRIQO_PID_DIR/$service.pid"
+    printf '%s\n' "$pid"
+}
+
 intriqo_wait_pid_exit() {
     local pid=$1 timeout=${2:-15} elapsed=0
     while intriqo_pid_running "$pid"; do
@@ -506,10 +541,22 @@ intriqo_stop_process() {
         rm -f -- "$INTRIQO_PID_DIR/$service.pid"
         return 0
     fi
-    kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+    if ! kill -TERM -- "-$pid" 2>/dev/null && ! kill -TERM "$pid" 2>/dev/null; then
+        # A demo engine may be launched as root so it can enter the monitor
+        # namespace.  Fall back to a non-interactive sudo signal only after the
+        # ordinary same-user signal was rejected; never prompt from a stop
+        # script that may be running without a terminal.
+        if command -v sudo >/dev/null 2>&1; then
+            sudo -n kill -TERM -- "-$pid" 2>/dev/null || sudo -n kill -TERM "$pid" 2>/dev/null || true
+        fi
+    fi
     if ! intriqo_wait_pid_exit "$pid" "$timeout"; then
         intriqo_warn "$service did not stop within ${timeout}s; sending SIGKILL"
-        kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+        if ! kill -KILL -- "-$pid" 2>/dev/null && ! kill -KILL "$pid" 2>/dev/null; then
+            if command -v sudo >/dev/null 2>&1; then
+                sudo -n kill -KILL -- "-$pid" 2>/dev/null || sudo -n kill -KILL "$pid" 2>/dev/null || true
+            fi
+        fi
         intriqo_wait_pid_exit "$pid" 3 || true
     fi
     rm -f -- "$INTRIQO_PID_DIR/$service.pid"

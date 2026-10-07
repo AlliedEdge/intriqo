@@ -6,7 +6,8 @@ agent poller, optional locked-model ML worker, and React/Vite dashboard. It is
 not a production deployment.
 
 For the analyst-facing event → incident → investigation → finding workflow,
-see [SOC Workflow](soc-workflow.md).
+see [SOC Workflow](soc-workflow.md). For the complete isolated live path, see
+[Demo Lab](demo-lab.md) and the [Demo Runbook](demo-runbook.md).
 
 ## 1. Prerequisites
 
@@ -232,6 +233,32 @@ for local loopback-only experiments:
 
 Do not use that helper against an address you do not own or have explicit
 permission to observe.
+
+## 10. Isolated live demo lab
+
+The persistent lab is separate from the application runtime. Set it up once,
+bring it up for each session, and validate it before starting the existing
+Release Candidate sensor:
+
+```bash
+./scripts/lab/setup.sh
+./scripts/lab/up.sh
+./scripts/start-demo.sh
+```
+
+Run only the fixed authorized scenarios from the second terminal:
+
+```bash
+./scripts/lab/port-scan.sh
+./scripts/lab/syn-flood.sh
+```
+
+The generators accept no target address. They fail if the owned topology,
+bidirectional mirror, fixed connectivity, or TAP packet probe is not verified.
+The C++ engine is launched against `tap-intriqo` in the monitor namespace; the
+SOC analyst does not configure the Linux lab. Use `scripts/stop-intriqo.sh`
+and `scripts/lab/down.sh` for clean shutdown. See [Demo Lab](demo-lab.md) for
+the topology and [Demo Runbook](demo-runbook.md) for the presentation sequence.
 
 ## 11. Frontend authentication smoke
 

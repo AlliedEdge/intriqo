@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import argparse
 import datetime as _datetime
+import fcntl
 import ipaddress
 import json
+import os
 import select
 import socket
 import struct
@@ -41,6 +43,11 @@ DEFAULT_TCP_SOURCE_PORT = 41000
 DEFAULT_UDP_SOURCE_PORT = 42000
 DEFAULT_FLOOD_DESTINATION_PORT = 65535
 DEFAULT_PAYLOAD = b"intriqo-controlled-v2-benign\n"
+DEMO_TRAFFIC_STATE_FILE = "/run/intriqo-demo-traffic-ports.json"
+DEMO_SOURCE_PORT_POOLS = {
+    "syn": (43000, 65535),
+    "scan": (44000, 65535),
+}
 
 # Names used by controller code that prefers explicit limit constants.
 MAX_PACKET_COUNT = MAX_PACKETS
@@ -180,6 +187,41 @@ def verify_lab(expected_address: str) -> None:
         raise TrafficError(f"{LAB_INTERFACE} does not have address {expected}")
     if not _routes_are_lab_only():
         raise TrafficError("lab routes must contain only 10.77.0.0/24 and no default")
+    if _demo_rotation_enabled():
+        _verify_demo_routes()
+
+
+def _verify_demo_routes() -> None:
+    """Additive demo gate covers alternate tables, policy rules and IPv6."""
+
+    try:
+        routes = json.loads(_run_ip("-j", "-4", "route", "show", "table", "all"))
+        rules = json.loads(_run_ip("-j", "rule", "show"))
+        ipv6 = json.loads(_run_ip("-j", "-6", "route", "show", "table", "all"))
+    except (TypeError, ValueError) as exc:
+        raise TrafficError("invalid demo route observations") from exc
+    if not isinstance(routes, list) or not isinstance(rules, list) or ipv6 != []:
+        raise TrafficError("unexpected demo routes or IPv6 configuration")
+    allowed_destinations = {
+        "127.0.0.0/8", "127.0.0.1", "127.255.255.255",
+        str(LAB_NETWORK), ATTACKER_IP, "10.77.0.0", "10.77.0.255",
+    }
+    for route in routes:
+        if not isinstance(route, dict) or str(route.get("dst")) not in allowed_destinations:
+            raise TrafficError("demo route has an unexpected destination")
+        if any(key in route for key in ("gateway", "via", "nexthops", "multipath", "nhid", "encap")):
+            raise TrafficError("demo route has a gateway or forwarding action")
+        if route.get("dev") not in {"lo", LAB_INTERFACE}:
+            raise TrafficError("demo route has an unexpected interface")
+        if route.get("table", "main") not in {"main", "local", 254, 255}:
+            raise TrafficError("demo route has an unexpected table")
+    for rule in rules:
+        if not isinstance(rule, dict) or rule.get("priority") not in {0, 32766, 32767}:
+            raise TrafficError("demo route policy is not the default policy")
+        if rule.get("table", rule.get("lookup")) not in {"local", "main", "default", 253, 254, 255}:
+            raise TrafficError("demo rule has an unexpected table")
+        if any(key in rule for key in ("goto", "fwmark", "iif", "oif", "uidrange", "suppress_prefixlength", "suppress_ifgroup")):
+            raise TrafficError("demo rule has a forwarding policy")
 
 
 def _validate_port(port: int, name: str = "port") -> int:
@@ -240,6 +282,104 @@ def _bind_client(sock: socket.socket, source_port: int) -> None:
 def _target_is_fixed(target: str) -> None:
     if target != VICTIM_IP:
         raise TrafficError(f"target is fixed to {VICTIM_IP}")
+
+
+def _demo_rotation_enabled() -> bool:
+    """Only the named demo endpoint selects scenario repeatability behavior."""
+    # ``sudo`` may sanitize the profile environment before entering the named
+    # namespace.  iproute2 can still identify the current namespace without
+    # guessing from an address or changing the controlled-v2 default.
+    try:
+        completed = subprocess.run(
+            ["ip", "netns", "identify", str(os.getpid())],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        return completed.returncode == 0 and completed.stdout.strip() == "intriqo-attacker"
+    except OSError:
+        return False
+
+
+def _allocate_demo_source_start(kind: str, requested: int, count: int, *, episode_seconds: float = 2.0) -> int:
+    """Allocate a never-reused bounded source range for repeatable demo runs."""
+
+    if not _demo_rotation_enabled():
+        return requested
+    try:
+        pool_start, pool_end = DEMO_SOURCE_PORT_POOLS[kind]
+    except KeyError as exc:
+        raise TrafficError(f"unknown demo source-port pool: {kind}") from exc
+    if requested < pool_start or requested > pool_end:
+        raise TrafficError(f"{kind} source port is outside the fixed demo pool")
+    state_path = os.environ.get("INTRIQO_DEMO_TRAFFIC_STATE_FILE", DEMO_TRAFFIC_STATE_FILE)
+    parent = os.path.dirname(state_path) or "."
+    try:
+        os.makedirs(parent, mode=0o755, exist_ok=True)
+        descriptor = os.open(state_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, "r+", encoding="utf-8") as stream:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+            stream.seek(0)
+            content = stream.read()
+            try:
+                state = json.loads(content) if content else {}
+            except (json.JSONDecodeError, ValueError) as exc:
+                raise TrafficError("corrupt demo source-port ledger; refusing reuse") from exc
+            if not isinstance(state, dict):
+                raise TrafficError("invalid demo source-port ledger; refusing reuse")
+            cursor = int(state.get(kind, requested))
+            if cursor < pool_start:
+                cursor = pool_start
+            if cursor + count - 1 > pool_end:
+                raise TrafficError(f"demo {kind} source-port pool is exhausted; refusing reuse")
+            # The detectors use source-address buckets, so distinct ports alone
+            # do not bypass the existing ten-second window/cooldown. Reserve a
+            # real quiet interval after the previous bounded episode, globally
+            # across scan/SYN scenarios; ranges are never wrapped or recycled.
+            boot_id = open("/proc/sys/kernel/random/boot_id", encoding="ascii").read().strip()
+            next_allowed = float(state.get("next_allowed", 0)) if state.get("boot_id") == boot_id else 0.0
+            wait = max(0.0, next_allowed - time.monotonic())
+            if wait > 3611.0:
+                raise TrafficError("invalid demo cooldown reservation")
+            if wait:
+                print(f"Waiting {wait:.1f}s for the existing detector window/cooldown...", file=sys.stderr)
+                time.sleep(wait)
+            state["next_allowed"] = time.monotonic() + episode_seconds + 11.0
+            state["boot_id"] = boot_id
+            state[kind] = cursor + count
+            stream.seek(0)
+            stream.truncate()
+            json.dump(state, stream, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+            return cursor
+    except TrafficError:
+        raise
+    except (OSError, ValueError) as exc:
+        raise TrafficError("cannot persist demo source-port allocation") from exc
+
+
+def plan_syn_flood_source_ports(
+    source_port: int = 43000,
+    count: int = 120,
+    *,
+    unique_source_ports: bool = False,
+    rate: float = DEFAULT_RATE,
+) -> list[int]:
+    """Return the exact deterministic source-port sequence before sending."""
+
+    source_port = _validate_port(source_port, "source port")
+    count = _validate_packet_count(count)
+    if not isinstance(unique_source_ports, bool):
+        raise TrafficError("unique_source_ports must be boolean")
+    if not unique_source_ports:
+        return [source_port] * count
+    if source_port + count - 1 > 65535:
+        raise TrafficError("unique SYN source port range exceeds 65535")
+    return [source_port + index for index in range(count)]
 
 
 def send_tcp_benign(
@@ -475,14 +615,17 @@ def send_syn_flood(
     source_port: int = 43000,
     count: int = 120,
     rate: float = DEFAULT_RATE,
+    unique_source_ports: bool = False,
     target: str = VICTIM_IP,
 ) -> dict[str, object]:
-    """Send repeated SYNs for one five-tuple to a caller-selected closed port.
+    """Send bounded SYNs to the fixed victim's caller-selected closed port.
 
     The destination must be kept closed by the victim/controller.  The sender
     does not probe it (probing would add an uncontrolled connection); the
     resulting RST traffic from a closed destination is what gives the episode
-    its normal bidirectional evidence.
+    its normal bidirectional evidence.  By default the historical repeated
+    five-tuple behavior is retained.  ``unique_source_ports`` is an additive,
+    deterministic mode for detectors that require one flow identity per SYN.
     """
 
     _target_is_fixed(target)
@@ -490,7 +633,16 @@ def send_syn_flood(
     source_port = _validate_port(source_port, "source port")
     count = _validate_packet_count(count)
     rate = _validate_rate(rate)
+    if not isinstance(unique_source_ports, bool):
+        raise TrafficError("unique_source_ports must be boolean")
     verify_lab(ATTACKER_IP)
+    if unique_source_ports and _demo_rotation_enabled():
+        source_port = _allocate_demo_source_start(
+            "syn", source_port, count, episode_seconds=count / rate
+        )
+    source_ports = plan_syn_flood_source_ports(
+        source_port, count, unique_source_ports=unique_source_ports
+    )
     start = _utc_now()
     sent = 0
     previous: float | None = None
@@ -498,8 +650,9 @@ def send_syn_flood(
         with _raw_sender() as sock:
             for sequence in range(count):
                 previous = _pace(previous, rate)
+                packet_source_port = source_ports[sequence]
                 packet = build_ipv4_tcp_syn(
-                    source_port,
+                    packet_source_port,
                     destination_port,
                     sequence=sequence,
                     identification=sequence & 0xFFFF,
@@ -509,17 +662,20 @@ def send_syn_flood(
     except OSError as exc:
         raise TrafficError("raw SYN flood send failed") from exc
     end = _utc_now()
-    return _receipt(
+    result = _receipt(
         "SYN_FLOOD", start, end, sent,
         packet_count=sent,
         source_address=ATTACKER_IP,
         destination_address=VICTIM_IP,
-        source_port=source_port,
+        source_port=source_ports[0],
         destination_port=destination_port,
-        repeated_five_tuple=True,
+        repeated_five_tuple=not unique_source_ports,
         destination_must_be_closed=True,
         rate_per_second=rate,
     )
+    if unique_source_ports:
+        result.update(unique_source_ports=True, source_ports=source_ports, source_port_end=source_ports[-1])
+    return result
 
 
 def parse_port_spec(spec: str) -> list[int]:
@@ -609,6 +765,11 @@ def send_port_scan(
     if duration_value <= 0:
         raise TrafficError("scan duration must be positive")
     verify_lab(ATTACKER_IP)
+    source_port_start = _allocate_demo_source_start(
+        "scan", source_port_start, len(port_list), episode_seconds=max(total / rate, duration_value)
+    )
+    if source_port_start + len(port_list) - 1 > 65535:
+        raise TrafficError("source port range exceeds 65535")
     start = _utc_now()
     sent = 0
     previous: float | None = None
@@ -844,6 +1005,11 @@ def _parser() -> argparse.ArgumentParser:
     flood.add_argument("--source-port", type=int, default=43000)
     flood.add_argument("--count", type=_bounded_count, default=120)
     flood.add_argument("--rate", type=_bounded_rate, default=DEFAULT_RATE)
+    flood.add_argument(
+        "--unique-source-ports",
+        action="store_true",
+        help="use deterministic source_port + sequence values (opt-in)",
+    )
 
     scan = sub.add_parser("port-scan", aliases=["PORT_SCAN"], help="send bounded raw port scan")
     scan.add_argument("--ports", required=True, help="comma-separated ports and/or ranges")
@@ -890,6 +1056,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 source_port=args.source_port,
                 count=args.count,
                 rate=args.rate,
+                unique_source_ports=args.unique_source_ports,
             )
         elif args.command in {"port-scan", "PORT_SCAN"}:
             result = send_port_scan(

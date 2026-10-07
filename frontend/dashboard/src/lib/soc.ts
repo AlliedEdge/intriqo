@@ -1,4 +1,4 @@
-import type { AgentTask, Finding, SecurityEvent } from '@/types/api'
+import type { AgentTask, Finding, IncidentStatus, SecurityEvent } from '@/types/api'
 
 export interface RelationshipIds {
   incidentIds: string[]
@@ -71,6 +71,11 @@ export function findingDetector(finding: Finding): string | null {
   return typeof value === 'string' && value ? value : null
 }
 
+export function findingType(finding: Finding): string | null {
+  const value = finding.finding_metadata?.finding_type
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
 export type InvestigationState = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'BLOCKED'
 
 /** Investigation completion is derived from task execution, independent of incident response state. */
@@ -79,4 +84,19 @@ export function investigationState(tasks: AgentTask[]): InvestigationState {
   if (tasks.some((task) => task.status === 'FAILED' || task.status === 'CANCELLED')) return 'BLOCKED'
   if (tasks.every((task) => task.status === 'COMPLETED')) return 'COMPLETED'
   return 'IN_PROGRESS'
+}
+
+const INCIDENT_STATUS_TRANSITIONS: Record<IncidentStatus, readonly IncidentStatus[]> = {
+  OPEN: ['INVESTIGATING', 'FALSE_POSITIVE'],
+  INVESTIGATING: ['CONTAINED', 'FALSE_POSITIVE'],
+  CONTAINED: ['RESOLVED', 'FALSE_POSITIVE'],
+  RESOLVED: ['CLOSED'],
+  CLOSED: [],
+  FALSE_POSITIVE: [],
+}
+
+/** Return only the lifecycle transitions accepted by the current API contract. */
+export function allowedIncidentStatusTransitions(status: string): IncidentStatus[] {
+  if (!Object.prototype.hasOwnProperty.call(INCIDENT_STATUS_TRANSITIONS, status)) return []
+  return [...INCIDENT_STATUS_TRANSITIONS[status as IncidentStatus]]
 }

@@ -15,6 +15,10 @@ export type AgentTaskStatus =
   | 'FAILED'
   | 'CANCELLED'
 
+export type AgentTaskType = 'INVESTIGATION' | 'CORRELATION' | 'THREAT_INTEL' | 'RESPONSE'
+
+export type AgentTaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
+
 export interface Paginated<T> {
   items: T[]
   total: number
@@ -61,6 +65,14 @@ export interface Incident {
   detection_sources?: string[]
 }
 
+export interface IncidentCreate {
+  title: string
+  description?: string
+  severity?: Severity
+  event_ids?: string[]
+  incident_metadata?: Record<string, unknown>
+}
+
 export interface AgentTask {
   task_id: string
   task_type: string
@@ -76,6 +88,17 @@ export interface AgentTask {
   idempotency_key?: string | null
   /** Additive relationship field returned by the SOC workflow API. */
   finding_ids?: string[]
+}
+
+export interface AgentTaskCreate {
+  task_type: AgentTaskType
+  description: string
+  priority?: AgentTaskPriority
+  task_id?: string
+  idempotency_key?: string
+  event_id?: string
+  incident_id?: string
+  context?: Record<string, unknown>
 }
 
 export interface Finding {

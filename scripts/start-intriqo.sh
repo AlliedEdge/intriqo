@@ -86,7 +86,7 @@ ENGINE_LOG="$INTRIQO_LOG_DIR/engine.log"
 ML_LOG="$INTRIQO_LOG_DIR/ml-worker.log"
 
 echo "Starting Control Plane..."
-CONTROL_CMD=("$INTRIQO_PYTHON" -m uvicorn intriqo.api.app:app --app-dir "$INTRIQO_ROOT_DIR/control-plane/src" --host "${INTRIQO_API_HOST:-127.0.0.1}" --port "${INTRIQO_API_PORT:-8000}")
+    CONTROL_CMD=("$INTRIQO_PYTHON" -m uvicorn intriqo.api.app:app --app-dir "$INTRIQO_ROOT_DIR/control-plane/src" --host "${INTRIQO_API_BIND_HOST:-${INTRIQO_API_HOST:-127.0.0.1}}" --port "${INTRIQO_API_PORT:-8000}")
 if intriqo_bool "${INTRIQO_API_RELOAD:-false}"; then
     CONTROL_CMD+=(--reload)
 fi
@@ -143,6 +143,7 @@ fi
 if intriqo_bool "${INTRIQO_ENGINE_ENABLED:-true}"; then
     ENGINE_BIN=$(intriqo_engine_binary "$(intriqo_bool "${INTRIQO_ML_ENABLED:-false}" && echo true || echo false)")
     ENGINE_CMD=("$ENGINE_BIN")
+    ENGINE_USE_PRIVILEGED_LAUNCH=false
     case "${INTRIQO_ENGINE_MODE:-synthetic}" in
         synthetic) ENGINE_CMD+=(--synthetic --synthetic-packets "${INTRIQO_ENGINE_SYNTHETIC_PACKETS:-10}") ;;
         pcap) ENGINE_CMD+=(--pcap "$(intriqo_resolve_path "$INTRIQO_ENGINE_SOURCE")") ;;
@@ -153,7 +154,7 @@ if intriqo_bool "${INTRIQO_ENGINE_ENABLED:-true}"; then
             ;;
     esac
     if [[ "${INTRIQO_ENGINE_SINK:-file}" == http ]]; then
-        ENGINE_CMD+=(--sink http --control-plane-url "${INTRIQO_CONTROL_PLANE_URL:-http://127.0.0.1:8000}")
+        ENGINE_CMD+=(--sink http --control-plane-url "${INTRIQO_ENGINE_CONTROL_PLANE_URL:-${INTRIQO_CONTROL_PLANE_URL:-http://127.0.0.1:8000}}")
     else
         ENGINE_CMD+=(--sink file --output "$ENGINE_STATE_DIR/events.jsonl")
     fi
@@ -170,8 +171,24 @@ if intriqo_bool "${INTRIQO_ENGINE_ENABLED:-true}"; then
     if [[ "$ML_RUNTIME_READY" == true ]]; then
         ENGINE_CMD+=(--feature-output "$ML_INPUT" --feature-schema flow_features.v2)
     fi
+    if [[ -n "${INTRIQO_ENGINE_NAMESPACE:-}" ]]; then
+        if intriqo_bool "${INTRIQO_ENGINE_USE_SUDO:-false}"; then
+            ENGINE_USE_PRIVILEGED_LAUNCH=true
+        fi
+        ENGINE_CMD=(ip netns exec "$INTRIQO_ENGINE_NAMESPACE" "${ENGINE_CMD[@]}")
+    fi
+    printf 'IDS engine launch:'
+    if [[ "$ENGINE_USE_PRIVILEGED_LAUNCH" == true ]]; then
+        printf ' sudo -n -- setsid --wait --'
+    fi
+    printf ' %q' "${ENGINE_CMD[@]}"
+    printf '\n'
     echo "Starting IDS engine..."
-    ENGINE_PID=$(intriqo_start_process engine "$ENGINE_LOG" "${ENGINE_CMD[@]}")
+    if [[ "$ENGINE_USE_PRIVILEGED_LAUNCH" == true ]]; then
+        ENGINE_PID=$(intriqo_start_privileged_process engine "$ENGINE_LOG" "${ENGINE_CMD[@]}")
+    else
+        ENGINE_PID=$(intriqo_start_process engine "$ENGINE_LOG" "${ENGINE_CMD[@]}")
+    fi
     intriqo_wait_for_engine_ready "$ENGINE_PID" "$ENGINE_LOG" "$STARTUP_TIMEOUT"
 fi
 

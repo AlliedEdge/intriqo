@@ -713,6 +713,28 @@ select { padding-right: 28px; }
 
 .workflow-state > div > span { color: var(--text-muted); font-size: 0.66rem; line-height: 1.45; }
 
+.workflow-control { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 0 18px 18px; }
+
+.workflow-control-copy { display: flex; min-width: 190px; flex: 1; flex-direction: column; gap: 4px; }
+
+.workflow-control-copy strong { color: var(--text-secondary); font-size: 0.75rem; }
+
+.workflow-control-copy > span { color: var(--text-muted); font-size: 0.66rem; line-height: 1.45; }
+
+.workflow-control > .form-error, .workflow-control > .form-success { flex-basis: 100%; }
+
+.workflow-control-field { display: flex; flex-direction: column; gap: 5px; color: var(--text-muted); font-size: 0.66rem; }
+
+.workflow-control-field select { min-width: 230px; }
+
+.workflow-control-source { color: var(--text-secondary); font-size: 0.72rem; }
+
+.workflow-control-hint { flex-basis: 100%; color: var(--text-muted); font-size: 0.7rem; }
+
+.lifecycle-control { border-top: 1px solid var(--border); padding-top: 18px; }
+
+.lifecycle-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
 .finding-list { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0 18px 10px; list-style: none; }
 
 .finding-list li { display: flex; gap: 10px; padding: 12px 0; border-bottom: 1px solid rgba(28, 48, 61, 0.7); color: var(--text-secondary); font-size: 0.78rem; line-height: 1.6; }

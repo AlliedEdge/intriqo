@@ -7,10 +7,11 @@ import { useApi } from '@/hooks/useApi'
 import { findingSeverity, formatDate, formatDateOnly, prettyJson, relativeTime, shortId, toIsoDateTime, truncate } from '@/lib/format'
 import {
   eventDetectionSource, eventDetector, eventRelationshipIds, findingDetectionSource,
-  findingDetector, findingEventType, incidentRelationshipIds, investigationState,
+  findingDetector, findingEventType, findingType, incidentRelationshipIds, investigationState,
+  allowedIncidentStatusTransitions,
   taskFindingIds,
 } from '@/lib/soc'
-import type { AgentTask, AuditLog, Finding, Incident, MessageResponse, RegisteredUser, SecurityEvent, Severity } from '@/types/api'
+import type { AgentTask, AuditLog, Finding, Incident, IncidentStatus, MessageResponse, RegisteredUser, SecurityEvent, Severity } from '@/types/api'
 import {
   FORGOT_PASSWORD_CONFIRMATION, isValidAccountToken, PASSWORD_HELP,
   passwordStrength, RESEND_VERIFICATION_CONFIRMATION, validateEmail, validatePassword,
@@ -24,6 +25,7 @@ import { PacketToFindings } from './landing/PacketToFindings'
 import { AuthConsole } from '@/components/layout/AuthConsole'
 import { GridPulse } from '@/components/GridPulse'
 import { SignalGlobe } from '@/components/SignalGlobe'
+import { canMutateWorkflow, createInvestigationTask, investigationBlocker, loadWorkflowAudit, promoteMlAnomaly, type WorkflowAudit } from './workflow'
 
 const GITHUB_URL = 'https://github.com/AlliedEdge/intriqo'
 // const DOCS_URL = `${GITHUB_URL}/tree/main/docs`
@@ -61,6 +63,19 @@ function safeError(error: Error | null): string {
   return error?.message || 'The control plane returned an unexpected response.'
 }
 
+function detailValue(details: Record<string, unknown>, keys: string[]): ReactNode {
+  for (const key of keys) {
+    const value = details[key]
+    if (value === undefined || value === null || value === '') continue
+    return typeof value === 'object' ? <span className="mono">{prettyJson(value)}</span> : asString(value)
+  }
+  return <span className="muted">Unavailable</span>
+}
+
+function DetailRefreshStatus({ loading, error, updatedAt, refresh }: { loading: boolean; error: Error | null; updatedAt: Date | null; refresh: () => void }) {
+  return <><div className="dashboard-meta" role="status"><span>{loading ? 'Refreshing API snapshot…' : error ? 'Refresh failed; showing the last successful snapshot.' : 'Persisted API snapshot'}</span><span>Last successful refresh: {updatedAt ? formatDate(updatedAt.toISOString(), true) : 'Unavailable'}</span></div>{error && <ErrorState message={safeError(error)} onRetry={refresh} />}</>
+}
+
 function ExternalLink({ href, children, className = '' }: { href: string; children: ReactNode; className?: string }) {
   return <a className={className} href={href} target="_blank" rel="noreferrer">{children}<Icon name="arrow-up-right" size={14} /></a>
 }
@@ -78,7 +93,7 @@ function EventProvenance({ event }: { event: SecurityEvent }) {
 }
 
 function FindingProvenance({ finding, event }: { finding: Finding; event?: SecurityEvent | null }) {
-  return <ProvenanceBadges eventType={findingEventType(finding) || event?.event_type} source={findingDetectionSource(finding) || (event ? eventDetectionSource(event) : null)} detector={findingDetector(finding) || (event ? eventDetector(event) : null)} />
+  return <><ProvenanceBadges eventType={findingEventType(finding) || event?.event_type} source={findingDetectionSource(finding) || (event ? eventDetectionSource(event) : null)} detector={findingDetector(finding) || (event ? eventDetector(event) : null)} />{findingType(finding) && <Badge tone="info">{findingType(finding)}</Badge>}</>
 }
 
 function AuditLink({ resourceId }: { resourceId: string }) {
@@ -92,9 +107,125 @@ function InvestigationState({ tasks }: { tasks: AgentTask[] }) {
     : state === 'BLOCKED'
       ? 'A linked investigation task failed or was cancelled.'
       : state === 'IN_PROGRESS'
-        ? 'Linked investigation tasks are still running.'
+        ? 'Linked investigation tasks are pending or running.'
         : 'No investigation task is linked yet.'
   return <div className="workflow-state"><div><strong>Investigation</strong><span>{description}</span></div><StatusBadge status={state} /></div>
+}
+
+function InvestigationTaskControl({ incident, events, description, disabled, onCreated }: { incident?: Incident; events: SecurityEvent[]; description: string; disabled: boolean; onCreated: () => void }) {
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [createdTask, setCreatedTask] = useState<AgentTask | null>(null)
+  const needsSelection = Boolean(incident && incident.linked_event_ids.length > 1 && events.length > 0)
+  const singleEventId = !needsSelection && events.length === 1 ? events[0].event_id : ''
+  const [selectedEventId, setSelectedEventId] = useState(singleEventId)
+  const eventKey = events.map((event) => event.event_id).join(',')
+  const recordKey = `${incident?.incident_id || ''}:${eventKey}`
+  const activeRecordKey = useRef<string | null>(recordKey)
+  const selectedEvent = events.find((event) => event.event_id === selectedEventId)
+  const blocker = events.length === 0 ? 'No readable source event is linked to this incident. Refresh or link an event before investigating.' : investigationBlocker(selectedEvent, incident)
+
+  useEffect(() => {
+    activeRecordKey.current = recordKey
+    setCreating(false)
+    setError(null)
+    setCreatedTask(null)
+    setSelectedEventId(singleEventId)
+    return () => { activeRecordKey.current = null }
+  }, [recordKey, singleEventId])
+
+  const createTask = async () => {
+    if (disabled || creating || createdTask || blocker) return
+    const requestRecordKey = recordKey
+    setCreating(true)
+    setError(null)
+    try {
+      const task = await createInvestigationTask(selectedEvent, incident, description)
+      if (activeRecordKey.current !== requestRecordKey) return
+      setCreatedTask(task)
+      onCreated()
+    } catch (reason) {
+      if (activeRecordKey.current !== requestRecordKey) return
+      setError(safeError(reason instanceof Error ? reason : null))
+    } finally {
+      if (activeRecordKey.current === requestRecordKey) setCreating(false)
+    }
+  }
+
+  return <div className="workflow-control" aria-busy={creating}><div className="workflow-control-copy"><strong>Queue investigation</strong><span>Creates an INVESTIGATION task with both a real source event and incident.</span></div>{needsSelection ? <label className="workflow-control-field">Source event<select value={selectedEventId} onChange={(event) => { setSelectedEventId(event.target.value); setCreatedTask(null); setError(null) }} disabled={disabled || creating}><option value="">Select a source event</option>{events.map((event) => <option value={event.event_id} key={event.event_id}>{event.event_type} · {shortId(event.event_id, 12)} · {formatDate(event.timestamp)}</option>)}</select></label> : events.length === 1 ? <span className="workflow-control-source">Source event: <strong>{events[0].event_type}</strong> · {shortId(events[0].event_id, 12)}</span> : null}<Button size="sm" onClick={createTask} disabled={disabled || creating || Boolean(createdTask) || Boolean(blocker)} icon="bot">{creating ? 'Creating task…' : createdTask ? 'Task recorded' : 'Create investigation task'}</Button>{!createdTask && blocker && <span className="workflow-control-hint">{blocker}</span>}{error && <AuthMessage error>{error}</AuthMessage>}{createdTask && <AuthMessage>Control plane returned task <Link className="inline-link mono" to={`/tasks/${createdTask.task_id}`}>{shortId(createdTask.task_id, 14)}</Link> with status <strong>{createdTask.status}</strong>. Refresh the task to observe execution and findings.</AuthMessage>}</div>
+}
+
+function MlPromotionControl({ event, disabled, onPromoted }: { event: SecurityEvent; disabled: boolean; onPromoted: () => void }) {
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [createdIncident, setCreatedIncident] = useState<Incident | null>(null)
+  const [createdTask, setCreatedTask] = useState<AgentTask | null>(null)
+  const activeRecordKey = useRef<string | null>(event.event_id)
+
+  useEffect(() => {
+    activeRecordKey.current = event.event_id
+    setCreating(false)
+    setError(null)
+    setCreatedIncident(null)
+    setCreatedTask(null)
+    return () => { activeRecordKey.current = null }
+  }, [event.event_id])
+
+  const promote = async () => {
+    if (disabled || creating || createdTask) return
+    const requestRecordKey = event.event_id
+    setCreating(true)
+    setError(null)
+    try {
+      const incident = createdIncident || await promoteMlAnomaly(event)
+      if (activeRecordKey.current !== requestRecordKey) return
+      setCreatedIncident(incident)
+      const task = await createInvestigationTask(event, incident, `Investigate ML anomaly ${shortId(event.event_id, 12)}`)
+      if (activeRecordKey.current !== requestRecordKey) return
+      setCreatedTask(task)
+      onPromoted()
+    } catch (reason) {
+      if (activeRecordKey.current !== requestRecordKey) return
+      setError(safeError(reason instanceof Error ? reason : null))
+    } finally {
+      if (activeRecordKey.current === requestRecordKey) setCreating(false)
+    }
+  }
+
+  return <div className="workflow-control" aria-busy={creating}><div className="workflow-control-copy"><strong>Promote ML anomaly</strong><span>Creates or links an incident for this real event, then creates its investigation task.</span></div><Button size="sm" onClick={promote} disabled={disabled || creating || Boolean(createdTask)} icon="alert">{creating ? createdIncident ? 'Creating investigation task…' : 'Promoting incident…' : createdTask ? 'Incident and task recorded' : createdIncident ? 'Retry investigation task' : 'Promote and investigate'}</Button>{error && <AuthMessage error>{createdIncident ? `Incident ${shortId(createdIncident.incident_id, 14)} is linked. The task request failed: ${error}` : error}</AuthMessage>}{createdTask && <AuthMessage>Incident <Link className="inline-link mono" to={`/incidents/${createdIncident?.incident_id}`}>{shortId(createdIncident?.incident_id, 14)}</Link> is linked. Control plane returned task <Link className="inline-link mono" to={`/tasks/${createdTask.task_id}`}>{shortId(createdTask.task_id, 14)}</Link> with status <strong>{createdTask.status}</strong>. Refresh the task to observe execution and findings.</AuthMessage>}</div>
+}
+
+function IncidentLifecycleControl({ incidentId, status, disabled, onUpdated }: { incidentId: string; status: string; disabled: boolean; onUpdated: () => void }) {
+  const [updatingStatus, setUpdatingStatus] = useState<IncidentStatus | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const nextStatuses = allowedIncidentStatusTransitions(status)
+  const activeRecordKey = useRef<string | null>(incidentId)
+
+  useEffect(() => {
+    activeRecordKey.current = incidentId
+    setUpdatingStatus(null)
+    setError(null)
+    return () => { activeRecordKey.current = null }
+  }, [incidentId])
+
+  const updateStatus = async (nextStatus: IncidentStatus) => {
+    if (disabled || updatingStatus || !nextStatuses.includes(nextStatus)) return
+    const requestRecordKey = incidentId
+    setUpdatingStatus(nextStatus)
+    setError(null)
+    try {
+      await incidentsApi.updateStatus(incidentId, nextStatus)
+      if (activeRecordKey.current !== requestRecordKey) return
+      onUpdated()
+    } catch (reason) {
+      if (activeRecordKey.current !== requestRecordKey) return
+      setError(safeError(reason instanceof Error ? reason : null))
+    } finally {
+      if (activeRecordKey.current === requestRecordKey) setUpdatingStatus(null)
+    }
+  }
+
+  return <div className="workflow-control lifecycle-control" aria-busy={Boolean(updatingStatus)}><div className="workflow-control-copy"><strong>Incident lifecycle</strong><span>Current status: <StatusBadge status={status} /></span></div>{nextStatuses.length > 0 ? <div className="lifecycle-actions">{nextStatuses.map((nextStatus) => <Button key={nextStatus} size="sm" variant={nextStatus === 'FALSE_POSITIVE' ? 'danger' : 'secondary'} onClick={() => updateStatus(nextStatus)} disabled={disabled || Boolean(updatingStatus)}>{updatingStatus === nextStatus ? 'Updating…' : `Move to ${nextStatus.replace(/_/g, ' ').toLowerCase()}`}</Button>)}</div> : <span className="muted">No further lifecycle transitions are available.</span>}{error && <AuthMessage error>{error}</AuthMessage>}</div>
 }
 
 function ArchitectureFlow() {
@@ -463,7 +594,7 @@ export function DashboardPage() {
   const { counts, events, incidents, tasks, findings, audit } = query.data
 
   return <div className="page-stack"><PageHeader eyebrow="SECURITY OPERATIONS" title="Overview" description="A connected view of detection, investigation, and audit activity." actions={<Button variant="secondary" size="sm" icon="refresh" onClick={() => setReload((value) => value + 1)}>Refresh</Button>} />
-     <div className="dashboard-meta"><span><span className="status-pulse" /> REST API connected</span><span>{incidents.total.toLocaleString()} incidents · {tasks.total.toLocaleString()} tasks · {findings.total.toLocaleString()} findings · {audit.total.toLocaleString()} audit records</span>{query.updatedAt && <span>Updated {relativeTime(query.updatedAt.toISOString())}</span>}</div>
+      <div className="dashboard-meta"><span>Persisted API snapshot</span><span>{incidents.total.toLocaleString()} incidents · {tasks.total.toLocaleString()} tasks · {findings.total.toLocaleString()} findings · {audit.total.toLocaleString()} audit records</span>{query.updatedAt && <span>Last successful refresh {relativeTime(query.updatedAt.toISOString())}</span>}</div>
     <div className="metric-grid">{dashboardSeverities.map((severity) => <Card className={`metric-card metric-${severity.toLowerCase()}`} key={severity}><div className="metric-label"><SeverityBadge severity={severity} /><Icon name="arrow-up-right" size={15} /></div><strong>{counts[severity].toLocaleString()}</strong><span>events in control plane</span></Card>)}</div>
      <div className="dashboard-grid dashboard-grid-primary"><Card className="panel panel-wide"><SectionHeading title="Recent security events" description="Latest events emitted by the IDS engine." action={<Link className="panel-link" to="/events">View all <Icon name="arrow-right" size={14} /></Link>} />{events.items.length === 0 ? <EmptyState icon="network" title="No security events yet" description="Run the Intriqo IDS demo to generate your first event." /> : <TableFrame><table className="data-table"><thead><tr><th>Severity</th><th>Provenance</th><th>Source → destination</th><th>Detected</th><th>Links</th></tr></thead><tbody>{events.items.map((event) => { const relationships = eventRelationshipIds(event); return <tr key={event.event_id}><td><SeverityBadge severity={event.severity} /></td><td><Link className="table-link" to={`/events/${event.event_id}`}><EventProvenance event={event} /></Link></td><td className="mono">{event.source_address} <span className="muted">→</span> {event.destination_address}</td><td>{formatDate(event.timestamp)}</td><td><span className="table-counts">{relationships.incidentIds.length} incident · {relationships.taskIds.length} task · {relationships.findingIds.length} finding</span></td></tr> })}</tbody></table></TableFrame>}</Card><Card className="panel"><SectionHeading title="Active incidents" description="Open work requiring operator attention." action={<Link className="panel-link" to="/incidents">View all <Icon name="arrow-right" size={14} /></Link>} />{incidents.items.length === 0 ? <EmptyState icon="alert" title="No active incidents" description="Incidents will appear here when the control plane creates them." /> : <div className="compact-list">{incidents.items.map((incident) => <Link className="compact-list-row" to={`/incidents/${incident.incident_id}`} key={incident.incident_id}><span><strong>{truncate(incident.title, 42)}</strong><small>{shortId(incident.incident_id, 12)} · {relativeTime(incident.updated_at)} · {incident.linked_event_ids.length} events · {(incident.linked_task_ids || []).length} tasks</small></span><span><SeverityBadge severity={incident.severity} /><StatusBadge status={incident.status} /></span></Link>)}</div>}</Card></div>
      <div className="dashboard-grid"><Card className="panel"><SectionHeading title="Agent activity" description="Tasks in the investigation workflow." action={<Link className="panel-link" to="/agents">Agents <Icon name="arrow-right" size={14} /></Link>} />{tasks.items.length === 0 ? <EmptyState icon="bot" title="No agent tasks" description="Agent tasks will appear after an incident is queued." /> : <div className="compact-list">{tasks.items.map((task) => <Link className="compact-list-row" to={`/tasks/${task.task_id}`} key={task.task_id}><span><strong>{truncate(task.description, 38)}</strong><small>{task.task_type} · {formatDate(task.created_at)} · {taskFindingIds(task).length} findings</small></span><StatusBadge status={task.status} /></Link>)}</div>}</Card><Card className="panel"><SectionHeading title="Recent findings" description="Structured output from investigation agents." action={<Link className="panel-link" to="/findings">Findings <Icon name="arrow-right" size={14} /></Link>} />{findings.items.length === 0 ? <EmptyState icon="bot" title="No findings yet" description="Agent findings will appear here after a task completes." /> : <div className="compact-list">{findings.items.map((finding) => <Link className="compact-list-row" to={`/findings/${finding.finding_id}`} key={finding.finding_id}><span><strong>{truncate(finding.summary || finding.findings[0] || 'Untitled finding', 38)}</strong><small>{finding.agent_name} · {formatDate(finding.created_at)}</small><FindingProvenance finding={finding} /></span><span><SeverityBadge severity={findingSeverity(finding)} /><StatusBadge status={finding.status} /></span></Link>)}</div>}</Card><Card className="panel"><SectionHeading title="Activity timeline" description="Append-only audit records across the workflow." action={<Link className="panel-link" to="/audit">Audit <Icon name="arrow-right" size={14} /></Link>} />{audit.items.length === 0 ? <EmptyState icon="clock" title="No audit activity" description="Workflow actions will be recorded here as the system runs." /> : <div className="timeline">{audit.items.slice(0, 7).map((entry) => <TimelineEntry entry={entry} key={entry.id} />)}</div>}</Card></div>
@@ -531,6 +662,7 @@ export function EventsPage() {
 
 export function EventDetailPage() {
   const { eventId = '' } = useParams()
+  const { user } = useAuth()
   const query = useApi(async (signal) => {
     const event = await eventsApi.get(eventId, signal)
     const relationships = eventRelationshipIds(event)
@@ -572,9 +704,14 @@ export function EventDetailPage() {
   if (query.error && !query.data) return <div className="page-stack"><BackLink to="/events" label="Events" /><ErrorState message={safeError(query.error)} onRetry={query.refresh} /></div>
   if (!query.data) return null
   const { event, relatedIncidents, relatedTasks, relatedFindings } = query.data
-  return <div className="page-stack"><BackLink to="/events" label="Events" /><PageHeader eyebrow="SECURITY EVENT" title={event.event_type} description={event.description || 'No description was provided by the detector.'} actions={<StatusBadge status="INGESTED" />} />
-     <div className="detail-grid"><Card className="panel"><SectionHeading title="Event metadata" action={<AuditLink resourceId={event.event_id} />} /><dl className="key-value-grid"><KeyValue label="Event ID" value={event.event_id} mono /><KeyValue label="Event type" value={<Badge tone="info">{event.event_type}</Badge>} /><KeyValue label="Severity" value={<SeverityBadge severity={event.severity} />} /><KeyValue label="Detection source" value={eventDetectionSource(event) || <span className="muted">Not supplied</span>} /><KeyValue label="Detector" value={eventDetector(event) || <span className="muted">Not supplied</span>} /><KeyValue label="Detected" value={formatDate(event.timestamp, true)} /><KeyValue label="Ingested" value={formatDate(event.ingested_at, true)} /><KeyValue label="Source" value={event.source_address} mono /><KeyValue label="Destination" value={event.destination_address} mono /></dl></Card><Card className="panel"><SectionHeading title="Detection details" description="Detector-specific evidence from the SecurityEvent contract." />{Object.keys(event.details || {}).length === 0 ? <EmptyState icon="info" title="No additional details" description="This event did not include detector-specific metadata." /> : <dl className="detail-properties">{Object.entries(event.details || {}).map(([key, value]) => <KeyValue key={key} label={key.replace(/_/g, ' ')} value={asString(value) || prettyJson(value)} mono={typeof value !== 'string'} />)}</dl>}</Card></div>
-     <Card className="panel"><SectionHeading title="Related incidents" description={`${relatedIncidents.length} linked incident${relatedIncidents.length === 1 ? '' : 's'} returned by the control plane.`} />{relatedIncidents.length === 0 ? <EmptyState icon="alert" title="No linked incident" description="This event is not linked to an incident yet." /> : <div className="compact-list">{relatedIncidents.map((incident) => <Link className="compact-list-row" to={`/incidents/${incident.incident_id}`} key={incident.incident_id}><span><strong>{incident.title}</strong><small>{shortId(incident.incident_id, 14)} · {incident.linked_event_ids.length} events · {(incident.linked_task_ids || []).length} tasks · updated {relativeTime(incident.updated_at)}</small></span><span><SeverityBadge severity={incident.severity} /><StatusBadge status={incident.status} /></span></Link>)}</div>}</Card>
+  const linkedIncident = relatedIncidents.length === 1 ? relatedIncidents[0] : undefined
+  const canMutate = canMutateWorkflow(user?.role)
+  const shouldPromoteMl = event.event_type === 'ML_ANOMALY' && event.linked_incident_ids?.length === 0 && relatedIncidents.length === 0
+  return <div className="page-stack"><BackLink to="/events" label="Events" /><PageHeader eyebrow="SECURITY EVENT" title={event.event_type} description={event.description || 'No description was provided by the detector.'} actions={<><Button variant="secondary" size="sm" icon="refresh" onClick={query.refresh} disabled={query.loading}>{query.loading ? 'Refreshing…' : 'Refresh'}</Button><StatusBadge status="INGESTED" /></>} />
+       <DetailRefreshStatus {...query} />
+       <div className="detail-grid"><Card className="panel"><SectionHeading title="Event metadata" action={<AuditLink resourceId={event.event_id} />} /><dl className="key-value-grid"><KeyValue label="Event ID" value={event.event_id} mono /><KeyValue label="Event type" value={<Badge tone="info">{event.event_type}</Badge>} /><KeyValue label="Severity" value={<SeverityBadge severity={event.severity} />} /><KeyValue label="Detection source" value={eventDetectionSource(event) || <span className="muted">Unavailable</span>} /><KeyValue label="Detector" value={eventDetector(event) || <span className="muted">Unavailable</span>} /><KeyValue label="Sensor" value={detailValue(event.details, ['sensor', 'sensor_id', 'sensor_name'])} /><KeyValue label="Source address" value={event.source_address} mono /><KeyValue label="Destination address" value={event.destination_address} mono /><KeyValue label="Source port" value={detailValue(event.details, ['source_port', 'src_port'])} mono /><KeyValue label="Destination port" value={detailValue(event.details, ['destination_port', 'dst_port'])} mono /><KeyValue label="Observed ports" value={detailValue(event.details, ['ports', 'destination_ports', 'scanned_ports', 'unique_destination_ports'])} mono /><KeyValue label="Detected" value={formatDate(event.timestamp, true)} /><KeyValue label="Ingested" value={formatDate(event.ingested_at, true)} /></dl></Card><Card className="panel"><SectionHeading title="Detection details" description="Detector-specific evidence from the SecurityEvent contract." />{Object.keys(event.details || {}).length === 0 ? <EmptyState icon="info" title="No additional details" description="This event did not include detector-specific metadata." /> : <dl className="detail-properties">{Object.entries(event.details || {}).map(([key, value]) => <KeyValue key={key} label={key.replace(/_/g, ' ')} value={asString(value) || prettyJson(value)} mono={typeof value !== 'string'} />)}</dl>}</Card></div>
+       {canMutate && <Card className="panel"><SectionHeading title="Investigation action" description={shouldPromoteMl ? 'Promote this real ML anomaly into the analyst workflow.' : 'Investigation tasks require both a real source event and a linked incident.'} />{shouldPromoteMl ? <MlPromotionControl key={event.event_id} event={event} disabled={query.loading || Boolean(query.error)} onPromoted={query.refresh} /> : <InvestigationTaskControl key={event.event_id} incident={linkedIncident} events={[event]} description={`Investigate ${event.event_type} event`} disabled={query.loading || Boolean(query.error)} onCreated={query.refresh} />}</Card>}
+      <Card className="panel"><SectionHeading title="Related incidents" description={`${relatedIncidents.length} linked incident${relatedIncidents.length === 1 ? '' : 's'} returned by the control plane.`} />{relatedIncidents.length === 0 ? <EmptyState icon="alert" title="No linked incident" description="This event is not linked to an incident yet." /> : <div className="compact-list">{relatedIncidents.map((incident) => <Link className="compact-list-row" to={`/incidents/${incident.incident_id}`} key={incident.incident_id}><span><strong>{incident.title}</strong><small>{shortId(incident.incident_id, 14)} · {incident.linked_event_ids.length} events · {(incident.linked_task_ids || []).length} tasks · updated {relativeTime(incident.updated_at)}</small></span><span><SeverityBadge severity={incident.severity} /><StatusBadge status={incident.status} /></span></Link>)}</div>}</Card>
      <div className="dashboard-grid"><Card className="panel"><SectionHeading title="Investigation tasks" description={`${relatedTasks.length} task${relatedTasks.length === 1 ? '' : 's'} linked to this event.`} />{relatedTasks.length === 0 ? <EmptyState icon="bot" title="No linked task" description="No investigation task is linked to this event yet." /> : <div className="compact-list">{relatedTasks.map((task) => <Link className="compact-list-row" to={`/tasks/${task.task_id}`} key={task.task_id}><span><strong>{truncate(task.description, 48)}</strong><small>{task.task_type} · {formatDate(task.created_at)} · {taskFindingIds(task).length} findings</small></span><StatusBadge status={task.status} /></Link>)}</div>}</Card><Card className="panel"><SectionHeading title="Findings" description={`${relatedFindings.length} finding${relatedFindings.length === 1 ? '' : 's'} linked to this event.`} />{relatedFindings.length === 0 ? <EmptyState icon="check" title="No linked finding" description="Findings will appear here after an investigation task submits a result." /> : <div className="compact-list">{relatedFindings.map((finding) => <Link className="compact-list-row" to={`/findings/${finding.finding_id}`} key={finding.finding_id}><span><strong>{truncate(finding.summary || finding.findings[0] || 'Untitled finding', 44)}</strong><small>{finding.agent_name} · {formatDate(finding.created_at)}</small><FindingProvenance finding={finding} /></span><StatusBadge status={finding.status} /></Link>)}</div>}</Card></div>
      <Card className="panel raw-json"><details><summary><span><Icon name="code" size={16} /> Raw JSON</span><span className="muted">Expand to inspect the API payload</span></summary><pre>{prettyJson(event)}</pre></details></Card>
   </div>
@@ -625,11 +762,12 @@ interface IncidentDetailSnapshot {
   events: SecurityEvent[]
   tasks: AgentTask[]
   findings: Finding[]
-  audit: AuditLog[]
+  audit: WorkflowAudit
 }
 
 export function IncidentDetailPage() {
   const { incidentId = '' } = useParams()
+  const { user } = useAuth()
   const query = useApi<IncidentDetailSnapshot>(async (signal) => {
     const incident = await incidentsApi.get(incidentId, signal)
     const eventIds = incident.linked_event_ids || []
@@ -655,12 +793,7 @@ export function IncidentDetailPage() {
       findingIds = findingResponses.flatMap((response) => response?.items || []).map((finding) => finding.finding_id)
     }
     const findings = (await Promise.all(findingIds.map((id) => findingsApi.get(id, signal).catch(() => null)))).filter((finding): finding is Finding => finding !== null)
-    let audit: AuditLog[] = []
-    try {
-      audit = (await auditApi.list({ resource_id: incidentId, page: 1, page_size: 50 }, signal)).items
-    } catch {
-      // The incident remains readable if an older control plane does not expose audit reads.
-    }
+    const audit = await loadWorkflowAudit(incidentId, eventIds, taskIds, [...findingIds, ...tasks.flatMap(taskFindingIds)], signal)
     return { incident, events, tasks, findings, audit }
   }, incidentId)
 
@@ -668,11 +801,13 @@ export function IncidentDetailPage() {
   if (query.error && !query.data) return <div className="page-stack"><BackLink to="/incidents" label="Incidents" /><ErrorState message={safeError(query.error)} onRetry={query.refresh} /></div>
   if (!query.data) return null
   const { incident, events, tasks, findings, audit } = query.data
-  return <div className="page-stack"><BackLink to="/incidents" label="Incidents" /><PageHeader eyebrow={`INCIDENT / ${shortId(incident.incident_id, 14)}`} title={incident.title} description={incident.description || 'No description was provided for this incident.'} actions={<span className="header-badges"><SeverityBadge severity={incident.severity} /><StatusBadge status={incident.status} /></span>} />
-     <div className="detail-grid"><Card className="panel"><SectionHeading title="Incident summary" action={<AuditLink resourceId={incident.incident_id} />} /><dl className="key-value-grid"><KeyValue label="Incident ID" value={incident.incident_id} mono /><KeyValue label="Detection sources" value={(incident.detection_sources || []).join(' · ') || 'Not supplied'} /><KeyValue label="Containment / resolution" value={<StatusBadge status={incident.status} />} /><KeyValue label="Severity" value={<SeverityBadge severity={incident.severity} />} /><KeyValue label="Created" value={formatDate(incident.created_at, true)} /><KeyValue label="Updated" value={formatDate(incident.updated_at, true)} /><KeyValue label="Resolved" value={formatDate(incident.resolved_at, true)} />{incident.correlation_key && <KeyValue label="Correlation key" value={incident.correlation_key} mono />}{incident.correlation_window_seconds !== null && incident.correlation_window_seconds !== undefined && <KeyValue label="Correlation window" value={`${incident.correlation_window_seconds}s`} />}</dl></Card><Card className="panel"><SectionHeading title="Workflow state" description="Investigation completion is tracked separately from containment and resolution." /><InvestigationState tasks={tasks} /><div className="workflow-counts"><WorkflowCount label="Events" value={events.length} icon="network" /><WorkflowCount label="Agent tasks" value={tasks.length} icon="bot" /><WorkflowCount label="Findings" value={findings.length} icon="check" /><WorkflowCount label="Audit records" value={audit.length} icon="list" /></div></Card></div>
-     <Card className="panel"><SectionHeading title="Related events" description={`${events.length} SecurityEvent${events.length === 1 ? '' : 's'} linked to this incident.`} />{events.length === 0 ? <EmptyState icon="network" title="No related events" description="The incident has no readable linked SecurityEvents." /> : <TableFrame><table className="data-table"><thead><tr><th>Severity</th><th>Provenance</th><th>Source → destination</th><th>Detected</th><th>Links</th></tr></thead><tbody>{events.map((event) => { const relationships = eventRelationshipIds(event); return <tr key={event.event_id}><td><SeverityBadge severity={event.severity} /></td><td><Link className="table-link" to={`/events/${event.event_id}`}><EventProvenance event={event} /></Link></td><td className="mono">{event.source_address} <span className="muted">→</span> {event.destination_address}</td><td>{formatDate(event.timestamp)}</td><td><span className="table-counts">{relationships.taskIds.length} task · {relationships.findingIds.length} finding</span></td></tr> })}</tbody></table></TableFrame>}</Card>
+  return <div className="page-stack"><BackLink to="/incidents" label="Incidents" /><PageHeader eyebrow={`INCIDENT / ${shortId(incident.incident_id, 14)}`} title={incident.title} description={incident.description || 'No description was provided for this incident.'} actions={<><Button variant="secondary" size="sm" icon="refresh" onClick={query.refresh} disabled={query.loading}>{query.loading ? 'Refreshing…' : 'Refresh'}</Button><span className="header-badges"><SeverityBadge severity={incident.severity} /><StatusBadge status={incident.status} /></span></>} />
+       <DetailRefreshStatus {...query} />
+      <div className="detail-grid"><Card className="panel"><SectionHeading title="Incident summary" action={<AuditLink resourceId={incident.incident_id} />} /><dl className="key-value-grid"><KeyValue label="Incident ID" value={incident.incident_id} mono /><KeyValue label="Detection sources" value={(incident.detection_sources || []).join(' · ') || 'Not supplied'} /><KeyValue label="Containment / resolution" value={<StatusBadge status={incident.status} />} /><KeyValue label="Severity" value={<SeverityBadge severity={incident.severity} />} /><KeyValue label="Created" value={formatDate(incident.created_at, true)} /><KeyValue label="Updated" value={formatDate(incident.updated_at, true)} /><KeyValue label="Resolved" value={formatDate(incident.resolved_at, true)} />{incident.correlation_key && <KeyValue label="Correlation key" value={incident.correlation_key} mono />}{incident.correlation_window_seconds !== null && incident.correlation_window_seconds !== undefined && <KeyValue label="Correlation window" value={`${incident.correlation_window_seconds}s`} />}</dl></Card><Card className="panel"><SectionHeading title="Workflow state" description="Investigation completion is tracked separately from containment and resolution." /><InvestigationState tasks={tasks} /><div className="workflow-counts"><WorkflowCount label="Events" value={events.length} icon="network" /><WorkflowCount label="Agent tasks" value={tasks.length} icon="bot" /><WorkflowCount label="Findings" value={findings.length} icon="check" /><WorkflowCount label="Audit records" value={audit.items.length} icon="list" /></div></Card></div>
+       {canMutateWorkflow(user?.role) && <Card className="panel"><SectionHeading title="Incident actions" description="Create investigation work and advance the incident through the allowed lifecycle." /><InvestigationTaskControl key={incident.incident_id} incident={incident} events={events.filter((event) => incident.linked_event_ids.includes(event.event_id))} description={`Investigate ${incident.title}`} disabled={query.loading || Boolean(query.error)} onCreated={query.refresh} /><IncidentLifecycleControl key={`lifecycle-${incident.incident_id}`} incidentId={incident.incident_id} status={incident.status} disabled={query.loading || Boolean(query.error)} onUpdated={query.refresh} /></Card>}
+      <Card className="panel"><SectionHeading title="Related events" description={`${events.length} SecurityEvent${events.length === 1 ? '' : 's'} linked to this incident.`} />{events.length === 0 ? <EmptyState icon="network" title="No related events" description="The incident has no readable linked SecurityEvents." /> : <TableFrame><table className="data-table"><thead><tr><th>Severity</th><th>Provenance</th><th>Source → destination</th><th>Detected</th><th>Links</th></tr></thead><tbody>{events.map((event) => { const relationships = eventRelationshipIds(event); return <tr key={event.event_id}><td><SeverityBadge severity={event.severity} /></td><td><Link className="table-link" to={`/events/${event.event_id}`}><EventProvenance event={event} /></Link></td><td className="mono">{event.source_address} <span className="muted">→</span> {event.destination_address}</td><td>{formatDate(event.timestamp)}</td><td><span className="table-counts">{relationships.taskIds.length} task · {relationships.findingIds.length} finding</span></td></tr> })}</tbody></table></TableFrame>}</Card>
      <div className="dashboard-grid"><Card className="panel"><SectionHeading title="Agent tasks" description={`${tasks.length} investigation task${tasks.length === 1 ? '' : 's'} linked to this incident.`} />{tasks.length === 0 ? <EmptyState icon="bot" title="No agent tasks" description="No task is linked to this incident yet." /> : <div className="compact-list">{tasks.map((task) => <Link className="compact-list-row" to={`/tasks/${task.task_id}`} key={task.task_id}><span><strong>{truncate(task.description, 46)}</strong><small>{task.task_type} · {shortId(task.task_id, 14)} · created {formatDate(task.created_at)} · {taskFindingIds(task).length} findings</small></span><StatusBadge status={task.status} /></Link>)}</div>}</Card><Card className="panel"><SectionHeading title="Findings" description={`${findings.length} result${findings.length === 1 ? '' : 's'} submitted by the investigation workflow.`} />{findings.length === 0 ? <EmptyState icon="check" title="No findings" description="A completed investigation task will attach findings here." /> : <div className="compact-list">{findings.map((finding) => <Link className="compact-list-row" to={`/findings/${finding.finding_id}`} key={finding.finding_id}><span><strong>{truncate(finding.summary || finding.findings[0] || 'Untitled finding', 46)}</strong><small>{finding.agent_name} · {Math.round(finding.confidence * 100)}% confidence · {formatDate(finding.created_at)}</small><FindingProvenance finding={finding} /></span><span><SeverityBadge severity={findingSeverity(finding)} /><StatusBadge status={finding.status} /></span></Link>)}</div>}</Card></div>
-     <Card className="panel"><SectionHeading title="Incident timeline" description="Audit entries whose resource is this incident." action={<AuditLink resourceId={incident.incident_id} />} />{audit.length === 0 ? <EmptyState icon="clock" title="No incident audit entries" description="The control plane has not returned audit records for this incident." /> : <div className="timeline">{audit.map((entry) => <TimelineEntry entry={entry} key={entry.id} />)}</div>}</Card>
+      <Card className="panel"><SectionHeading title="Incident workflow timeline" description="Actual audit entries for this incident and its related events, tasks, and findings. Bounded to 100 resources, the first 50 returned per resource, and the newest 200 combined entries." action={<AuditLink resourceId={incident.incident_id} />} />{audit.unavailable > 0 && <p className="detail-copy">History is partial: audit reads for {audit.unavailable} resource(s) are unavailable.</p>}{audit.truncated && <p className="detail-copy">Additional audit records exist beyond this view’s bounds. Open a resource’s audit trail to page through its history.</p>}{audit.items.length === 0 ? <EmptyState icon="clock" title="No readable workflow audit entries" description="No records were returned in the bounded audit reads." /> : <div className="timeline">{audit.items.map((entry) => <TimelineEntry entry={entry} key={entry.id} />)}</div>}</Card>
   </div>
 }
 
@@ -751,8 +886,9 @@ export function FindingDetailPage() {
   const provenanceEventType = findingEventType(finding) || event?.event_type
   const provenanceSource = findingDetectionSource(finding) || (event ? eventDetectionSource(event) : null)
   const provenanceDetector = findingDetector(finding) || (event ? eventDetector(event) : null)
-  return <div className="page-stack"><BackLink to="/findings" label="Findings" /><PageHeader eyebrow={`FINDING / ${shortId(finding.finding_id, 14)}`} title={finding.summary || finding.findings[0] || 'Investigation finding'} description={`Submitted by ${finding.agent_name} on ${formatDateOnly(finding.created_at)}.`} actions={<span className="header-badges"><SeverityBadge severity={findingSeverity(finding)} /><StatusBadge status={finding.status} /></span>} />
-     <div className="detail-grid"><Card className="panel"><SectionHeading title="Finding summary" action={<AuditLink resourceId={finding.finding_id} />} /><dl className="key-value-grid"><KeyValue label="Finding ID" value={finding.finding_id} mono /><KeyValue label="Agent" value={finding.agent_name} mono /><KeyValue label="Task" value={<Link className="table-link mono" to={`/tasks/${finding.task_id}`}>{shortId(finding.task_id, 16)}</Link>} /><KeyValue label="Confidence" value={`${Math.round(finding.confidence * 100)}%`} /><KeyValue label="Created" value={formatDate(finding.created_at, true)} /><KeyValue label="Severity" value={findingSeverity(finding) ? <SeverityBadge severity={findingSeverity(finding)} /> : <span className="muted">Not supplied</span>} /><KeyValue label="Detection source" value={provenanceSource || <span className="muted">Not supplied</span>} /><KeyValue label="Event type" value={provenanceEventType || <span className="muted">Not supplied</span>} /><KeyValue label="Detector" value={provenanceDetector || <span className="muted">Not supplied</span>} /></dl></Card><Card className="panel"><SectionHeading title="Provenance" description="The finding receipt preserves the detector and workflow context returned by the API." /><FindingProvenance finding={finding} event={event} />{finding.provenance && Object.keys(finding.provenance).length > 0 ? <pre className="json-block">{prettyJson(finding.provenance)}</pre> : <EmptyState icon="info" title="No provenance receipt" description="This finding response does not include provenance metadata." />}</Card></div>
+  return <div className="page-stack"><BackLink to="/findings" label="Findings" /><PageHeader eyebrow={`FINDING / ${shortId(finding.finding_id, 14)}`} title={finding.summary || finding.findings[0] || 'Investigation finding'} description={`Submitted by ${finding.agent_name} on ${formatDateOnly(finding.created_at)}.`} actions={<><Button variant="secondary" size="sm" icon="refresh" onClick={query.refresh} disabled={query.loading}>{query.loading ? 'Refreshing…' : 'Refresh'}</Button><span className="header-badges"><SeverityBadge severity={findingSeverity(finding)} /><StatusBadge status={finding.status} /></span></>} />
+      <DetailRefreshStatus {...query} />
+      <div className="detail-grid"><Card className="panel"><SectionHeading title="Finding summary" action={<AuditLink resourceId={finding.finding_id} />} /><dl className="key-value-grid"><KeyValue label="Finding ID" value={finding.finding_id} mono /><KeyValue label="Finding type" value={findingType(finding) || <span className="muted">Unavailable</span>} /><KeyValue label="Agent" value={finding.agent_name} mono /><KeyValue label="Task" value={<Link className="table-link mono" to={`/tasks/${finding.task_id}`}>{shortId(finding.task_id, 16)}</Link>} /><KeyValue label="Confidence" value={`${Math.round(finding.confidence * 100)}%`} /><KeyValue label="Created" value={formatDate(finding.created_at, true)} /><KeyValue label="Severity" value={findingSeverity(finding) ? <SeverityBadge severity={findingSeverity(finding)} /> : <span className="muted">Not supplied</span>} /><KeyValue label="Detection source" value={provenanceSource || <span className="muted">Not supplied</span>} /><KeyValue label="Event type" value={provenanceEventType || <span className="muted">Not supplied</span>} /><KeyValue label="Detector" value={provenanceDetector || <span className="muted">Not supplied</span>} /></dl></Card><Card className="panel"><SectionHeading title="Provenance" description="The finding receipt preserves the detector and workflow context returned by the API." /><FindingProvenance finding={finding} event={event} />{finding.provenance && Object.keys(finding.provenance).length > 0 ? <pre className="json-block">{prettyJson(finding.provenance)}</pre> : <EmptyState icon="info" title="No provenance receipt" description="This finding response does not include provenance metadata." />}</Card></div>
      <Card className="panel"><SectionHeading title="Recommendation" description="Read from finding metadata when supplied by the agent." />{recommendation ? <p className="detail-copy">{typeof recommendation === 'string' ? recommendation : prettyJson(recommendation)}</p> : <EmptyState icon="info" title="No recommendation provided" description="This finding does not include a recommendation in finding_metadata." />}</Card>
      <Card className="panel"><SectionHeading title="Findings" description="Agent-generated observations." />{finding.findings.length === 0 ? <EmptyState icon="info" title="No observations" description="The agent submitted no finding strings." /> : <ul className="finding-list">{finding.findings.map((item, index) => <li key={`${item}-${index}`}><span className="finding-bullet"><Icon name="check" size={13} /></span><span>{item}</span></li>)}</ul>}</Card>
      <div className="dashboard-grid"><Card className="panel"><SectionHeading title="Evidence" description="Structured evidence objects submitted with the result." />{finding.evidence.length === 0 ? <EmptyState icon="database" title="No evidence attached" description="The finding contains no evidence objects." /> : <div className="evidence-list">{finding.evidence.map((item, index) => <details className="evidence-item" key={index}><summary>Evidence {String(index + 1).padStart(2, '0')}</summary><pre>{prettyJson(item)}</pre></details>)}</div>}</Card><Card className="panel"><SectionHeading title="Related resources" /><div className="related-resource-list"><Link className="related-resource" to={`/tasks/${task.task_id}`}><span className="resource-icon"><Icon name="bot" size={16} /></span><span><strong>{task.description}</strong><small>AgentTask · {shortId(task.task_id, 14)} · {task.status}</small></span><Icon name="arrow-up-right" size={15} /></Link>{incident ? <Link className="related-resource" to={`/incidents/${incident.incident_id}`}><span className="resource-icon"><Icon name="alert" size={16} /></span><span><strong>{incident.title}</strong><small>Incident · {shortId(incident.incident_id, 14)} · {incident.status}</small></span><Icon name="arrow-up-right" size={15} /></Link> : <div className="related-resource related-resource-muted"><span className="resource-icon"><Icon name="alert" size={16} /></span><span><strong>No related incident</strong><small>The task has no readable incident link.</small></span></div>}{event ? <Link className="related-resource" to={`/events/${event.event_id}`}><span className="resource-icon"><Icon name="network" size={16} /></span><span><strong>{event.event_type}</strong><small>SecurityEvent · {shortId(event.event_id, 14)} · {formatDate(event.timestamp)}</small></span><Icon name="arrow-up-right" size={15} /></Link> : <div className="related-resource related-resource-muted"><span className="resource-icon"><Icon name="network" size={16} /></span><span><strong>No related event</strong><small>The task has no readable event link.</small></span></div>}<Link className="related-resource" to={`/audit?resource_id=${encodeURIComponent(finding.finding_id)}`}><span className="resource-icon"><Icon name="list" size={16} /></span><span><strong>Audit trail</strong><small>{audit.length} record{audit.length === 1 ? '' : 's'} for this finding</small></span><Icon name="arrow-up-right" size={15} /></Link></div></Card></div>
@@ -802,7 +938,8 @@ export function TaskDetailPage() {
   if (query.error && !query.data) return <div className="page-stack"><BackLink to="/agents" label="Agents" /><ErrorState message={safeError(query.error)} onRetry={query.refresh} /></div>
   if (!query.data) return null
   const { task, event, incident, findings, audit } = query.data
-  return <div className="page-stack"><BackLink to="/agents" label="Agents" /><PageHeader eyebrow={`AGENT TASK / ${shortId(task.task_id, 14)}`} title={task.description} description={`Investigation task created ${formatDate(task.created_at)}.`} actions={<span className="header-badges"><Badge tone={task.priority.toLowerCase()}>{task.priority}</Badge><StatusBadge status={task.status} /></span>} />
+  return <div className="page-stack"><BackLink to="/agents" label="Agents" /><PageHeader eyebrow={`AGENT TASK / ${shortId(task.task_id, 14)}`} title={task.description} description={`Investigation task created ${formatDate(task.created_at)}.`} actions={<><Button variant="secondary" size="sm" icon="refresh" onClick={query.refresh} disabled={query.loading}>{query.loading ? 'Refreshing…' : 'Refresh'}</Button><span className="header-badges"><Badge tone={task.priority.toLowerCase()}>{task.priority}</Badge><StatusBadge status={task.status} /></span></>} />
+     <DetailRefreshStatus {...query} />
     <div className="detail-grid"><Card className="panel"><SectionHeading title="Task metadata" action={<AuditLink resourceId={task.task_id} />} /><dl className="key-value-grid"><KeyValue label="Task ID" value={task.task_id} mono /><KeyValue label="Task type" value={task.task_type} /><KeyValue label="Status" value={<StatusBadge status={task.status} />} /><KeyValue label="Priority" value={<Badge tone={task.priority.toLowerCase()}>{task.priority}</Badge>} /><KeyValue label="Created" value={formatDate(task.created_at, true)} /><KeyValue label="Updated" value={formatDate(task.updated_at, true)} /><KeyValue label="Completed" value={formatDate(task.completed_at, true)} /><KeyValue label="Finding count" value={findings.length} /></dl></Card><Card className="panel"><SectionHeading title="Investigation outcome" description="Task completion is separate from the linked incident’s containment or resolution state." /><InvestigationState tasks={[task]} /><div className="workflow-counts"><WorkflowCount label="Findings" value={findings.length} icon="check" /><WorkflowCount label="Audit records" value={audit.length} icon="list" /></div></Card></div>
     <div className="dashboard-grid"><Card className="panel"><SectionHeading title="Source event" />{event ? <Link className="related-resource" to={`/events/${event.event_id}`}><span className="resource-icon"><Icon name="network" size={16} /></span><span><strong>{event.event_type}</strong><small><EventProvenance event={event} /> · {formatDate(event.timestamp)}</small></span><Icon name="arrow-up-right" size={15} /></Link> : <EmptyState icon="network" title="No source event" description="This task does not have a readable event relationship." />}</Card><Card className="panel"><SectionHeading title="Incident" />{incident ? <Link className="related-resource" to={`/incidents/${incident.incident_id}`}><span className="resource-icon"><Icon name="alert" size={16} /></span><span><strong>{incident.title}</strong><small><SeverityBadge severity={incident.severity} /> · {incident.status}</small></span><Icon name="arrow-up-right" size={15} /></Link> : <EmptyState icon="alert" title="No linked incident" description="This task does not have a readable incident relationship." />}</Card></div>
     <Card className="panel"><SectionHeading title="Findings and evidence" description={`${findings.length} finding${findings.length === 1 ? '' : 's'} returned for this task.`} />{findings.length === 0 ? <EmptyState icon="check" title="No findings" description="Evidence will appear here after the investigation task submits a finding." /> : <div className="compact-list">{findings.map((finding) => <Link className="compact-list-row" to={`/findings/${finding.finding_id}`} key={finding.finding_id}><span><strong>{truncate(finding.summary || finding.findings[0] || 'Untitled finding', 55)}</strong><small>{finding.agent_name} · {finding.evidence.length} evidence item{finding.evidence.length === 1 ? '' : 's'} · {formatDate(finding.created_at)}</small><FindingProvenance finding={finding} /></span><span><SeverityBadge severity={findingSeverity(finding)} /><StatusBadge status={finding.status} /></span></Link>)}</div>}</Card>
