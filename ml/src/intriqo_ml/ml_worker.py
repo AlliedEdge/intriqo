@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, BinaryIO, Protocol, TextIO
 
+from .attack_classifier import classify_attack
 from .flow_features import MAX_RECORD_BYTES, FlowFeatureError
 from .flow_features_v2 import FlowFeatureRecordV2, parse_flow_feature_record_v2
 from .inference_v2 import (
@@ -364,18 +365,23 @@ class DecisionLedger:
 
 
 def _event_payload(result: MLDetectionResult, record: FlowFeatureRecordV2) -> dict[str, Any]:
-    """Build the minimal v1 event; no ports, labels, vectors, or corpus data."""
+    """Build the v1 event enriched with post-hoc attack classification."""
+
+    classification = classify_attack(record.features, result.anomaly_score)
 
     return {
         "event_id": deterministic_event_id(result),
         "event_type": "ML_ANOMALY",
-        "severity": "MEDIUM",
+        "severity": classification.severity,
         "timestamp": result.inference_timestamp,
         "source_address": record.metadata.network.src_ip,
         "destination_address": record.metadata.network.dst_ip,
+        "description": classification.description,
         "details": {
             "detector": "isolation_forest_v2",
             "detection_source": "ML",
+            "attack_type": classification.attack_type,
+            "confidence": classification.confidence,
             "result": result.to_dict(),
         },
     }
