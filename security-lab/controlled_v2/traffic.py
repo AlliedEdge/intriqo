@@ -816,6 +816,64 @@ def send_port_scan(
     )
 
 
+def send_udp_port_scan(
+    ports: Sequence[int] | str,
+    *,
+    source_port_start: int = 45000,
+    rate: float = 20.0,
+    target: str = VICTIM_IP,
+) -> dict[str, object]:
+    """Send one bounded UDP probe to each fixed-victim destination port."""
+
+    _target_is_fixed(target)
+    if isinstance(ports, str):
+        port_list = parse_port_spec(ports)
+    else:
+        port_list = []
+        seen: set[int] = set()
+        for value in ports:
+            port = _validate_port(value, "scan port")
+            if port not in seen:
+                port_list.append(port)
+                seen.add(port)
+        if not port_list or len(port_list) > MAX_PORTS:
+            raise TrafficError(f"UDP scan requires 1..{MAX_PORTS} unique ports")
+    source_port_start = _validate_port(source_port_start, "source port start")
+    if source_port_start + len(port_list) - 1 > 65535:
+        raise TrafficError("UDP scan source port range exceeds 65535")
+    rate = _validate_rate(rate)
+    verify_lab(ATTACKER_IP)
+    source_port_start = _allocate_demo_source_start(
+        "scan", source_port_start, len(port_list), episode_seconds=max(1.0, len(port_list) / rate)
+    )
+    if source_port_start + len(port_list) - 1 > 65535:
+        raise TrafficError("UDP scan source port range exceeds 65535")
+
+    start = _utc_now()
+    sent = 0
+    previous: float | None = None
+    try:
+        for index, destination_port in enumerate(port_list):
+            previous = _pace(previous, rate)
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                _bind_client(sock, source_port_start + index)
+                sock.sendto(b"intriqo-udp-scan-probe", (VICTIM_IP, destination_port))
+                sent += 1
+    except OSError as exc:
+        raise TrafficError("UDP port-scan send failed") from exc
+    end = _utc_now()
+    return _receipt(
+        "UDP_SCAN", start, end, sent,
+        packet_count=sent,
+        source_address=ATTACKER_IP,
+        destination_address=VICTIM_IP,
+        ports=port_list,
+        unique_ports=len(port_list),
+        source_port_start=source_port_start,
+        rate_per_second=rate,
+    )
+
+
 def serve_endpoint(
     *,
     tcp_port: int = 8080,
@@ -1017,6 +1075,10 @@ def _parser() -> argparse.ArgumentParser:
     scan.add_argument("--source-port-start", type=int, default=44000)
     scan.add_argument("--rate", type=_bounded_rate, default=DEFAULT_RATE)
     scan.add_argument("--duration", type=_positive_duration)
+    udp_scan = sub.add_parser("udp-port-scan", aliases=["UDP_SCAN"], help="send bounded UDP port probes")
+    udp_scan.add_argument("--ports", required=True, help="comma-separated ports and/or ranges")
+    udp_scan.add_argument("--source-port-start", type=int, default=45000)
+    udp_scan.add_argument("--rate", type=_bounded_rate, default=20.0)
     return parser
 
 
@@ -1065,6 +1127,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 source_port_start=args.source_port_start,
                 rate=args.rate,
                 duration=args.duration,
+            )
+        elif args.command in {"udp-port-scan", "UDP_SCAN"}:
+            result = send_udp_port_scan(
+                args.ports,
+                source_port_start=args.source_port_start,
+                rate=args.rate,
             )
         else:  # pragma: no cover - argparse enforces the command set
             raise TrafficError("unknown command")

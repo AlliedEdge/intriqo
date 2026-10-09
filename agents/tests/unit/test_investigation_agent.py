@@ -64,6 +64,24 @@ class TestInvestigationAgent(unittest.TestCase):
         self.assertEqual(evidence["detector_name"], "syn_flood")
         self.assertEqual(evidence["incomplete_handshake_count"], 110)
 
+    def test_udp_scan_control_plane_event_produces_port_scan_finding(self) -> None:
+        event = SecurityEvent(
+            id="evt-udp-scan", timestamp=datetime.now(timezone.utc), event_type="UDP_SCAN",
+            severity="HIGH", source="10.77.0.10", target="10.77.0.20",
+            metadata={"transport_protocol": "UDP", "unique_destination_ports": 10,
+                      "connection_attempts": 10, "detector_name": "udp_port_scan"},
+        )
+        task = AgentTask(
+            task_id="task-udp-scan", task_type="INVESTIGATION", description="Investigate UDP scan",
+            security_event=event,
+        )
+
+        result = self.agent._investigate_control_plane_event(task)
+
+        self.assertEqual(result.status, "SUCCESS")
+        self.assertEqual(result.metadata["finding_type"], "PORT_SCAN_ANALYSIS")
+        self.assertIn("10 unique ports", result.findings[0])
+
     def test_ml_anomaly_investigation_preserves_locked_receipt_without_labels(self) -> None:
         event = SecurityEvent(
             id="evt-ml", timestamp=datetime.now(timezone.utc), event_type="ML_ANOMALY",

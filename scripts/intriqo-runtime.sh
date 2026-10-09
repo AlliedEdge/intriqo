@@ -519,7 +519,18 @@ intriqo_start_privileged_process() {
     # outer setsid session can require an interactive authentication even when
     # sudo -n succeeds in the caller.  The privileged command creates the
     # detached session after sudo has accepted the caller's cached grant.
-    sudo -n -- setsid --wait -- "$@" >> "$log_file" 2>&1 < /dev/null &
+    if [[ "${INTRIQO_ENGINE_SINK:-file}" == http && -n "${INTRIQO_CONTROL_PLANE_TOKEN:-}" ]]; then
+        # sudo filters custom environment values. Deliver the one required
+        # bearer token over stdin to a root-side wrapper, not argv or sudo's
+        # environment, then preserve the existing sudo -> setsid ordering.
+        printf '%s\n' "$INTRIQO_CONTROL_PLANE_TOKEN" | sudo -n -- setsid --wait -- bash -c '
+IFS= read -r INTRIQO_CONTROL_PLANE_TOKEN || exit 1
+export INTRIQO_CONTROL_PLANE_TOKEN
+exec "$@"
+' intriqo-privileged-launch "$@" >> "$log_file" 2>&1 &
+    else
+        sudo -n -- setsid --wait -- "$@" >> "$log_file" 2>&1 < /dev/null &
+    fi
     local pid=$!
     printf '%s\n' "$pid" > "$INTRIQO_PID_DIR/$service.pid"
     printf '%s\n' "$pid"
@@ -560,6 +571,39 @@ intriqo_stop_process() {
         intriqo_wait_pid_exit "$pid" 3 || true
     fi
     rm -f -- "$INTRIQO_PID_DIR/$service.pid"
+}
+
+intriqo_control_plane_health_url() {
+    local host=${INTRIQO_API_HOST:-127.0.0.1}
+    local port=${INTRIQO_API_PORT:-8000}
+    local pid proc_root=${INTRIQO_PROC_ROOT:-/proc} index argument
+    local -a process_args=()
+
+    # The demo intentionally binds the Control Plane to a host-only management
+    # address. Read the actual launcher-owned uvicorn arguments so a later
+    # status invocation in a fresh shell does not probe .env's localhost value.
+    pid=$(intriqo_pid_for control-plane 2>/dev/null || true)
+    if [[ -n "$pid" ]] && intriqo_pid_running "$pid" && [[ -r "$proc_root/$pid/cmdline" ]]; then
+        mapfile -d '' -t process_args < "$proc_root/$pid/cmdline"
+        for ((index = 0; index < ${#process_args[@]}; index++)); do
+            argument=${process_args[index]}
+            case "$argument" in
+                --host)
+                    (( index + 1 < ${#process_args[@]} )) && host=${process_args[index + 1]}
+                    ;;
+                --host=*) host=${argument#--host=} ;;
+                --port)
+                    (( index + 1 < ${#process_args[@]} )) && port=${process_args[index + 1]}
+                    ;;
+                --port=*) port=${argument#--port=} ;;
+            esac
+        done
+    fi
+
+    if [[ "$host" == *:* && "$host" != \[*\] ]]; then
+        host="[$host]"
+    fi
+    printf 'http://%s:%s/ready\n' "$host" "$port"
 }
 
 intriqo_compose() {

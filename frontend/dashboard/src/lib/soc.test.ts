@@ -42,6 +42,7 @@ describe('SOC relationship and provenance helpers', () => {
     expect(eventDetectionSource(event())).toBe('ML')
     expect(eventDetector(event())).toBe('isolation_forest_v2')
     expect(eventDetectionSource(event({ event_type: 'PORT_SCAN', details: {} }))).toBe('DETERMINISTIC')
+    expect(eventDetectionSource(event({ event_type: 'UDP_SCAN', details: {} }))).toBe('DETERMINISTIC')
     expect(eventDetectionSource(event({ event_type: 'FUTURE_DETECTOR', details: {} }))).toBeNull()
   })
 

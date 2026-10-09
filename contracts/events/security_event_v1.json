@@ -22,7 +22,7 @@
     "event_type": {
       "type": "string",
       "minLength": 1,
-      "examples": ["PORT_SCAN", "SYN_FLOOD", "BRUTE_FORCE", "DNS_ANOMALY"],
+      "examples": ["PORT_SCAN", "UDP_SCAN", "SYN_FLOOD", "BRUTE_FORCE", "DNS_ANOMALY"],
       "description": "Detector-specific event type literal. Python consumers map this via EVENT_TYPE_MAP."
     },
     "severity": {

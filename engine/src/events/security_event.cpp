@@ -7,7 +7,7 @@
 
 namespace intriqo::events {
 std::string_view severity_name(Severity s) noexcept { switch(s){case Severity::LOW:return "LOW";case Severity::MEDIUM:return "MEDIUM";case Severity::HIGH:return "HIGH";default:return "CRITICAL";} }
-std::string_view event_type_name(EventType t) noexcept { switch(t){case EventType::PORT_SCAN:return "PORT_SCAN";case EventType::SYN_FLOOD:return "SYN_FLOOD";case EventType::BRUTE_FORCE:return "BRUTE_FORCE";case EventType::DNS_ANOMALY:return "DNS_ANOMALY";case EventType::STATISTICAL_ANOMALY:return "STATISTICAL_ANOMALY";default:return "UNKNOWN";} }
+std::string_view event_type_name(EventType t) noexcept { switch(t){case EventType::PORT_SCAN:return "PORT_SCAN";case EventType::SYN_FLOOD:return "SYN_FLOOD";case EventType::BRUTE_FORCE:return "BRUTE_FORCE";case EventType::DNS_ANOMALY:return "DNS_ANOMALY";case EventType::UDP_SCAN:return "UDP_SCAN";case EventType::STATISTICAL_ANOMALY:return "STATISTICAL_ANOMALY";default:return "UNKNOWN";} }
 namespace {
 std::string escape(std::string_view s) { std::string out; for(char c:s){switch(c){case '"':out+="\\\"";break;case '\\':out+="\\\\";break;case '\n':out+="\\n";break;case '\r':out+="\\r";break;case '\t':out+="\\t";break;default:out+=c;}} return out; }
 std::string format_timestamp(TimePoint t) { auto ms=std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch()); auto sec=std::chrono::duration_cast<std::chrono::seconds>(ms); auto rem=ms-sec; std::time_t tt=sec.count(); std::tm tm{}; gmtime_r(&tt,&tm); std::ostringstream o; o<<std::put_time(&tm,"%Y-%m-%dT%H:%M:%S")<<'.'<<std::setw(3)<<std::setfill('0')<<rem.count()<<'Z'; return o.str(); }

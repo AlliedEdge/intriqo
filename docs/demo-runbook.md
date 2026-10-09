@@ -1,9 +1,68 @@
 # INTRIQO live demonstration runbook
 
 Target duration: **10–15 minutes**. This runbook is deliberately narrow: one
-analyst, one isolated sensor, two deterministic scenarios, one validated ML
+analyst, one isolated sensor, three deterministic scenarios, one validated ML
 path, and one failure-isolation check. Do not open database consoles or create
 records manually during the demo.
+
+## Operator setup and quick start
+
+Use a Linux host with Docker Compose, `iproute2` (`ip` and `tc`), `ping`,
+Python 3, Node.js/npm, and `sudo`. Namespace creation, traffic mirroring,
+traffic generation, and capture initialization require root privileges. The
+runtime launcher asks for sudo before startup and starts the engine only after
+the host services; the engine's privileged `setsid --wait` launch path must be
+preserved so its PID and shutdown handling remain attached to the runtime.
+
+Install the build and runtime prerequisites on a new host:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential cmake pkg-config libpcap-dev \
+  iproute2 iputils-ping docker.io docker-compose-v2 python3 python3-venv \
+  nodejs npm
+```
+
+The existing engine is built with CMake's `INTRIQO_ENABLE_PCAP=ON` option.
+Confirm CMake reports `libpcap found — live capture enabled` and that
+`build/intriqo-runtime-release/engine/CMakeFiles/intriqo_engine_lib.dir/flags.make`
+contains `-DINTRIQO_HAS_PCAP`. The runtime library may be dynamically or
+statically linked; `ldd` alone is not the feature check.
+
+Create the local configuration once, then keep it private:
+
+```bash
+cp .env.example .env
+```
+
+The default local `.env.example` values configure PostgreSQL on `127.0.0.1:5432`,
+the Control Plane on `127.0.0.1:8000`, and Vite on `127.0.0.1:5173`. `start-demo.sh`
+overrides the Control Plane bind and engine sink URLs to the lab's host-only
+management link (`169.254.77.1`) while the browser continues using localhost.
+The engine and agent service tokens are created and stored by the existing
+runtime under `.intriqo/`; do not paste them into frontend source or commit
+`.env` or `.intriqo/`.
+
+Exact first-run and per-session commands:
+
+```bash
+# One-time, owned lab creation and verification
+./scripts/lab/setup.sh
+./scripts/lab/status.sh --verify
+
+# Each session: bring the lab up before the application runtime
+./scripts/lab/up.sh
+./scripts/start-demo.sh
+INTRIQO_API_HOST=169.254.77.1 ./scripts/status-intriqo.sh
+./scripts/logs-intriqo.sh --follow engine
+```
+
+Open the dashboard URL printed by `start-demo.sh`, sign in as an `ANALYST`,
+and confirm the Overview refresh succeeds. Keep the lab status output and
+engine's live-capture readiness log visible. A stored event is historical
+until its event timestamp and `ingested_at` are checked against the current
+session; use the newest events and the scenario's `10.77.0.10` → `10.77.0.20`
+addresses when demonstrating a fresh detection.
 
 ## Before the audience arrives
 
@@ -109,9 +168,21 @@ Open the task and finding from the incident page:
    unauthorized transitions; the UI only offers the existing allowed next
    states.
 
-## 08:00–10:00 — SYN_FLOOD
+## 08:00–09:00 — UDP_SCAN
 
-Run the second authorized scenario:
+Run the bounded UDP reconnaissance scenario:
+
+```bash
+./scripts/lab/udp-port-scan.sh
+```
+
+Show the distinct `UDP_SCAN` detector event, UDP transport metadata, linked
+incident, and audit entry. This is still a port-scan family scenario; it tests
+UDP flow parsing and detection separately from the TCP scan.
+
+## 09:00–11:00 — SYN_FLOOD
+
+Run the third authorized scenario:
 
 ```bash
 ./scripts/lab/syn-flood.sh
@@ -122,7 +193,7 @@ investigation task, finding evidence, audit trail, and permitted incident
 lifecycle. Point out the detector receipt fields for initial SYN attempts,
 incomplete handshakes, ratio, rate, destination port, and observation window.
 
-## 10:00–12:00 — ML anomaly
+## 11:00–13:00 — ML anomaly
 
 The ML path is an experimental, locked integration rather than a production
 accuracy claim. Before this segment, use the existing `.env.ml` configuration
@@ -151,7 +222,7 @@ If the worker is not `READY` or the validated replay is unavailable, stop at
 the honest failure state and say “ML validation is environment-gated”; do not
 manufacture an ML event or claim a live result.
 
-## 12:00–13:00 — ML failure isolation
+## 13:00–14:00 — ML failure isolation
 
 With deterministic engine and Control Plane still running:
 
@@ -169,7 +240,7 @@ The point is an architectural boundary, not an artificial error: ML failure is
 not C++ deterministic detector failure. Restart the normal runtime before
 leaving the environment if further testing is needed.
 
-## 13:00–15:00 — RBAC, audit, and close
+## 14:00–15:00 — RBAC, audit, and close
 
 1. Show Settings with the current user role `ANALYST`.
 2. Explain that public registration ignores elevated-role input and defaults
@@ -189,6 +260,51 @@ leaving the environment if further testing is needed.
 
 The stop command preserves PostgreSQL data by default. The lab cleanup is
 separate and removes only the owned demo namespaces after verification.
+
+For recovery while retaining the lab, stop and restart only the application
+runtime, then verify it again:
+
+```bash
+./scripts/stop-intriqo.sh
+./scripts/start-demo.sh
+INTRIQO_API_HOST=169.254.77.1 ./scripts/status-intriqo.sh
+```
+
+PostgreSQL data is persisted in the Compose-managed volume and is retained by
+`stop-intriqo.sh`. Do not use `docker compose down -v` as a demo recovery step.
+
+## Troubleshooting
+
+- **Lab says `BLOCKED` or `sudo` is unavailable:** rerun from a terminal with
+  working sudo authorization, then run `./scripts/lab/status.sh --verify`.
+  The dashboard cannot create namespaces or independently inspect host lab
+  interfaces.
+- **Engine says live capture is unavailable:** rebuild the existing Release
+  configuration with libpcap development headers available:
+
+  ```bash
+  cmake -S . -B build/intriqo-runtime-release \
+    -DCMAKE_BUILD_TYPE=Release -DINTRIQO_BUILD_TESTS=ON \
+    -DINTRIQO_ENABLE_PCAP=ON
+  cmake --build build/intriqo-runtime-release --parallel
+  ctest --test-dir build/intriqo-runtime-release --output-on-failure
+  ```
+
+  Check CMake's libpcap detection and `INTRIQO_HAS_PCAP` compile definition,
+  then verify the monitor namespace and interface with `./scripts/lab/status.sh
+  --verify` before restarting the runtime.
+- **Control Plane or dashboard does not start:** inspect
+  `./scripts/logs-intriqo.sh control-plane`, `./scripts/logs-intriqo.sh
+  frontend`, and `./scripts/logs-intriqo.sh postgres`; check Docker Compose,
+  ports 5432/8000/5173, and the local `.env` configuration.
+- **Dashboard loads but has no new event:** check the lab mirror and engine
+  readiness first, then run one bounded scenario with
+  `./scripts/lab/port-scan.sh`. Compare the resulting event time and ingestion
+  time to the current session before describing it as live. Do not create a
+  dashboard record manually or lower detector thresholds.
+- **Runtime restart fails because services are already running:** use
+  `./scripts/stop-intriqo.sh`, inspect `./scripts/status-intriqo.sh`, then
+  retry `./scripts/start-demo.sh`. Do not remove the PostgreSQL volume.
 
 ## Claims discipline
 

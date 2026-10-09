@@ -106,6 +106,15 @@ class TestAdaptFromDict(unittest.TestCase):
         event = adapt_from_dict(_valid_contract(event_type="PORT_SCAN"))
         self.assertEqual(event.event_type, "PORT_SCAN_DETECTED")
 
+    def test_udp_scan_type_is_preserved_for_investigation(self) -> None:
+        event = adapt_from_dict(_valid_contract(
+            event_type="UDP_SCAN",
+            description="Deterministic UDP port scan detected",
+            details={"transport_protocol": "UDP", "unique_destination_ports": 10},
+        ))
+        self.assertEqual(event.event_type, "UDP_SCAN")
+        self.assertEqual(event.metadata["transport_protocol"], "UDP")
+
     def test_ml_anomaly_mapping_preserves_provenance(self) -> None:
         event = adapt_from_dict(_valid_ml_contract())
         self.assertEqual(event.event_type, "ML_ANOMALY")
@@ -256,6 +265,9 @@ class TestAdaptFromDict(unittest.TestCase):
 
     def test_syn_flood_in_map(self) -> None:
         self.assertEqual(EVENT_TYPE_MAP["SYN_FLOOD"], "SYN_FLOOD")
+
+    def test_udp_scan_in_map(self) -> None:
+        self.assertEqual(EVENT_TYPE_MAP["UDP_SCAN"], "UDP_SCAN")
 
     def test_unknown_event_type_passes_through(self) -> None:
         event = adapt_from_dict(_valid_contract(event_type="FUTURE_DETECTOR_TYPE"))

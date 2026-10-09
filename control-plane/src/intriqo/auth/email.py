@@ -14,24 +14,17 @@ logger = logging.getLogger("intriqo.auth.email")
 RESEND_API_URL = "https://api.resend.com/emails"
 
 # ---------------------------------------------------------------------------
-# Inline SVG logo — rendered in every email client without external hosting
+# Email clients commonly strip inline SVG. Keep the brand mark text based so it
+# renders without relying on a publicly hosted image or client SVG support.
 # ---------------------------------------------------------------------------
-_LOGO_SVG = """
-<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:middle;">
-  <rect width="36" height="36" rx="7" fill="#10bbe0" fill-opacity="0.15"/>
-  <path d="M18 7L29 13V23C29 27.4 24.9 31.1 18 33C11.1 31.1 7 27.4 7 23V13L18 7Z"
-        stroke="#10bbe0" stroke-width="1.8" stroke-linejoin="round" fill="none"/>
-  <path d="M14 18L16.5 20.5L22 15" stroke="#10bbe0" stroke-width="1.8"
-        stroke-linecap="round" stroke-linejoin="round"/>
-</svg>
-"""
+_LOGO_MARK = '<span style="display:inline-block;width:36px;height:36px;line-height:36px;text-align:center;vertical-align:middle;border-radius:7px;background:#102633;color:#10bbe0;font-size:20px;font-weight:800;">I</span>'
 
 
 def _base_template(
     *,
     preheader: str,
     header_label: str,
-    hero_icon_svg: str,
+    hero_mark: str,
     heading: str,
     subheading: str,
     body_paragraphs: list[str],
@@ -88,7 +81,7 @@ def _base_template(
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
               <tr>
                 <td>
-                  {_LOGO_SVG}
+                  {_LOGO_MARK}
                   <span style="display:inline-block;vertical-align:middle;margin-left:10px;font-size:15px;font-weight:800;letter-spacing:4px;color:#ebebed;">INTRIQO</span>
                 </td>
                 <td align="right">
@@ -109,8 +102,8 @@ def _base_template(
           <td style="background:linear-gradient(160deg,#0b1825 0%,#07101c 100%);border-left:1px solid #1c303d;border-right:1px solid #1c303d;padding:40px 32px 32px;text-align:center;">
 
             <!-- Icon badge -->
-            <div style="display:inline-block;width:64px;height:64px;border-radius:16px;background:rgba(16,187,224,0.1);border:1px solid rgba(16,187,224,0.3);line-height:64px;text-align:center;margin-bottom:22px;">
-              {hero_icon_svg}
+            <div style="display:inline-block;width:64px;height:64px;border-radius:16px;background:#102633;border:1px solid #1b5364;line-height:64px;text-align:center;margin-bottom:22px;">
+              <span style="color:#10bbe0;font-size:30px;font-weight:700;">{hero_mark}</span>
             </div>
 
             <h1 style="margin:0 0 10px;font-size:26px;font-weight:700;color:#ebebed;letter-spacing:-0.5px;line-height:1.2;">{safe_heading}</h1>
@@ -215,25 +208,10 @@ def _base_template(
 
 
 # ---------------------------------------------------------------------------
-# Hero icons — inline SVG per email type
+# Hero marks — text glyphs render in email clients that strip SVG
 # ---------------------------------------------------------------------------
-_ICON_SHIELD_CHECK = """<svg width="28" height="28" viewBox="0 0 24 24" fill="none"
-  xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;">
-  <path d="M12 3L20 6V11C20 16 16.6 19.6 12 21C7.4 19.6 4 16 4 11V6L12 3Z"
-        stroke="#10bbe0" stroke-width="1.6" stroke-linejoin="round"/>
-  <path d="M9 12L11 14L15 10" stroke="#10bbe0" stroke-width="1.6"
-        stroke-linecap="round" stroke-linejoin="round"/>
-</svg>"""
-
-_ICON_LOCK_RESET = """<svg width="28" height="28" viewBox="0 0 24 24" fill="none"
-  xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;">
-  <path d="M7 11V8a5 5 0 0 1 9.9-1" stroke="#10bbe0" stroke-width="1.6"
-        stroke-linecap="round"/>
-  <rect x="4" y="11" width="16" height="10" rx="2"
-        stroke="#10bbe0" stroke-width="1.6"/>
-  <path d="M12 15v2" stroke="#10bbe0" stroke-width="1.6" stroke-linecap="round"/>
-  <path d="M18 5l2 2-2 2" stroke="#10bbe0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>"""
+_ICON_SHIELD_CHECK = "✓"
+_ICON_LOCK_RESET = "↻"
 
 
 def verification_email_html(
@@ -243,7 +221,7 @@ def verification_email_html(
     return _base_template(
         preheader=f"Hi {username}, confirm your email to activate your Intriqo account.",
         header_label="ACCOUNT SETUP",
-        hero_icon_svg=_ICON_SHIELD_CHECK,
+        hero_mark=_ICON_SHIELD_CHECK,
         heading="Verify your email address",
         subheading="One step away from your Security Operations Platform",
         body_paragraphs=[
@@ -272,7 +250,7 @@ def password_reset_email_html(
     return _base_template(
         preheader=f"Hi {username}, a password reset was requested for your Intriqo account.",
         header_label="SECURITY ALERT",
-        hero_icon_svg=_ICON_LOCK_RESET,
+        hero_mark=_ICON_LOCK_RESET,
         heading="Reset your password",
         subheading="A request was made to change your Intriqo account password",
         body_paragraphs=[

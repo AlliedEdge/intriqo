@@ -47,7 +47,7 @@ async def ingest_event(
     details = dict(payload.details)
     # Keep provenance explicit at the persisted event boundary without
     # changing the existing detector-specific fields or ML receipt.
-    if payload.event_type in {"PORT_SCAN", "SYN_FLOOD"}:
+    if payload.event_type in {"PORT_SCAN", "UDP_SCAN", "SYN_FLOOD"}:
         details.setdefault("detection_source", "DETERMINISTIC")
     raw["details"] = details
     # Serialise datetime for JSONB storage

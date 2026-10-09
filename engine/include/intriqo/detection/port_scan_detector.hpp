@@ -16,9 +16,10 @@ struct PortScanConfig {
     events::Severity severity{events::Severity::HIGH};
     std::size_t max_tracked_sources{4096};
     std::size_t max_tracked_observations{100000};
+    Protocol protocol{Protocol::TCP};
 };
 
-/// Fixed windows count distinct TCP destination ports and distinct flow IDs.
+/// Fixed windows count distinct TCP or UDP destination ports and flow IDs.
 /// Windows expire strictly after window_seconds from their first observation.
 /// The event-time watermark never moves backwards. Late observations may join
 /// an existing window if they do not precede its start; they cannot open a new
@@ -30,7 +31,9 @@ struct PortScanConfig {
 class PortScanDetector final : public Detector {
 public:
     explicit PortScanDetector(PortScanConfig config = {});
-    [[nodiscard]] std::string_view name() const noexcept override { return "port_scan"; }
+    [[nodiscard]] std::string_view name() const noexcept override {
+        return config_.protocol == Protocol::UDP ? "udp_port_scan" : "port_scan";
+    }
     [[nodiscard]] std::vector<events::SecurityEvent>
     evaluate(const flow::NetworkFlow&, const features::FlowFeatures&) noexcept override;
     [[nodiscard]] DetectorStatistics statistics() const noexcept override;

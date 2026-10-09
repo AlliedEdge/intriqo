@@ -29,7 +29,7 @@ else
     status_ok=false
 fi
 
-health_url="http://${INTRIQO_API_HOST:-127.0.0.1}:${INTRIQO_API_PORT:-8000}/ready"
+health_url=$(intriqo_control_plane_health_url)
 control_plane_ready=false
 if intriqo_health_ok "$health_url"; then
     echo "Control Plane:   HEALTHY ($health_url)"

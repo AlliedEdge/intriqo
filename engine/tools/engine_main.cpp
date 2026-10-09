@@ -540,6 +540,9 @@ int run(const Options& options) {
 
     auto registry = std::make_unique<detection::DetectorRegistry>();
     registry->add(std::make_unique<detection::PortScanDetector>(options.detector));
+    auto udp_scan = options.detector;
+    udp_scan.protocol = Protocol::UDP;
+    registry->add(std::make_unique<detection::PortScanDetector>(udp_scan));
     if (options.syn_flood_enabled)
         registry->add(std::make_unique<detection::SynFloodDetector>(options.syn_flood));
     const auto names = registry->names();

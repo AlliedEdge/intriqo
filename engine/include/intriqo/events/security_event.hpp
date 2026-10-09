@@ -24,6 +24,7 @@ enum class EventType : std::uint16_t {
     SYN_FLOOD        = 2,
     BRUTE_FORCE      = 3,
     DNS_ANOMALY      = 4,
+    UDP_SCAN         = 5,
     STATISTICAL_ANOMALY = 100,
     UNKNOWN          = 0xFFFF,
 };

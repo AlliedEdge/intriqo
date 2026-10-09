@@ -64,6 +64,7 @@ logger = logging.getLogger("intriqo.agents.tools.engine_event_adapter")
 # When the engine adds a new detector, add its event type mapping here.
 EVENT_TYPE_MAP: dict[str, str] = {
     "PORT_SCAN": "PORT_SCAN_DETECTED",
+    "UDP_SCAN": "UDP_SCAN",
     "SYN_FLOOD": "SYN_FLOOD",
     # Keep ML findings distinct from deterministic detector event names.  The
     # payload's details.detection_source is validated below as provenance.

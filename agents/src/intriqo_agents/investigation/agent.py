@@ -134,7 +134,7 @@ class InvestigationAgent(Agent):
     def _investigate_control_plane_event(self, task: AgentTask) -> AgentResult:
         """Deterministically analyze detector details returned by the Control Plane."""
         event = task.security_event
-        if event.event_type in {"PORT_SCAN", "PORT_SCAN_DETECTED"}:
+        if event.event_type in {"PORT_SCAN", "PORT_SCAN_DETECTED", "UDP_SCAN"}:
             return self._investigate_port_scan_details(task)
         if event.event_type == "SYN_FLOOD":
             return self._investigate_syn_flood(task)
@@ -257,7 +257,7 @@ class InvestigationAgent(Agent):
         )
 
         try:
-            if event.event_type in {"PORT_SCAN", "PORT_SCAN_DETECTED"}:
+            if event.event_type in {"PORT_SCAN", "PORT_SCAN_DETECTED", "UDP_SCAN"}:
                 return self._investigate_port_scan(task)
             if event.event_type == "SYN_FLOOD":
                 return self._investigate_syn_flood(task)

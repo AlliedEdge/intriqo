@@ -183,7 +183,7 @@ async def submit_finding(
     source = payload.source
     if source is None:
         source = "ML" if event_type == "ML_ANOMALY" else (
-            "DETERMINISTIC" if event_type in {"PORT_SCAN", "SYN_FLOOD"} else "AGENT"
+            "DETERMINISTIC" if event_type in {"PORT_SCAN", "UDP_SCAN", "SYN_FLOOD"} else "AGENT"
         )
     severity = payload.severity or (event.severity if event is not None else None)
     provenance = dict(payload.provenance)

@@ -115,7 +115,7 @@ The demo sensor is a deployment identity, not a new database entity:
 | Sensor identity | `INTRIQO-LAB-01` |
 | Capture interface | `tap-intriqo` in `intriqo-monitor` |
 | Observed network | `10.77.0.0/24` |
-| Detection | Existing C++ `PORT_SCAN` and `SYN_FLOOD` detectors |
+| Detection | Existing C++ `PORT_SCAN`, `UDP_SCAN`, and `SYN_FLOOD` detectors |
 | Event sink | Existing authenticated Control Plane HTTP sink |
 
 `./scripts/start-demo.sh` verifies the lab and starts the existing runtime with
@@ -153,6 +153,7 @@ existing controlled traffic helper:
 
 ```bash
 ./scripts/lab/port-scan.sh
+./scripts/lab/udp-port-scan.sh
 ./scripts/lab/syn-flood.sh
 ```
 
@@ -162,6 +163,9 @@ The deterministic parameters are selected from the existing detector defaults:
   fixed source ports beginning at `44000`, and a bounded one-second episode.
   This supplies ten distinct TCP flow identities and twenty attempts inside
   the existing ten-second detector window.
+- `UDP_SCAN`: destination ports `10080–10089`, one UDP datagram per port,
+  fixed source ports beginning at `45000`, paced at 20/s. This supplies ten
+  distinct UDP flow identities to the separately registered UDP scan detector.
 - `SYN_FLOOD`: destination port `65535`, one hundred unique source ports
   beginning at `43000`, paced at `75/s`. The unique five-tuples and duration
   satisfy the existing 100-attempt, 50/s, 50-incomplete-handshake, and one

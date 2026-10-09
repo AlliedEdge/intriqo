@@ -46,6 +46,24 @@ async def test_deterministic_correlation_uses_key_and_window(
 
 
 @pytest.mark.asyncio
+async def test_udp_scan_is_persisted_as_deterministic_correlated_event(
+    client, agent_headers, analyst_headers
+):
+    event = _event("UDP_SCAN", "2026-10-01T13:00:00Z")
+    response = await client.post("/api/v1/events", json=event, headers=agent_headers)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["event_type"] == "UDP_SCAN"
+    assert body["details"]["detection_source"] == "DETERMINISTIC"
+    assert len(body["linked_incident_ids"]) == 1
+    incident = await client.get(
+        f"/api/v1/incidents/{body['linked_incident_ids'][0]}", headers=analyst_headers
+    )
+    assert incident.status_code == 200
+    assert event["event_id"] in incident.json()["linked_event_ids"]
+
+
+@pytest.mark.asyncio
 async def test_lifecycle_rejects_skips_and_same_state_is_idempotent(
     client, analyst_headers
 ):

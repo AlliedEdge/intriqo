@@ -30,6 +30,9 @@ PortScanDetector::PortScanDetector(PortScanConfig config) : config_(config) {
     if (config_.unique_port_threshold == 0 || config_.minimum_attempts == 0) {
         throw std::invalid_argument("port scan thresholds must be positive");
     }
+    if (config_.protocol != Protocol::TCP && config_.protocol != Protocol::UDP) {
+        throw std::invalid_argument("port scan protocol must be TCP or UDP");
+    }
     if (config_.max_tracked_sources == 0 || config_.max_tracked_observations == 0) {
         throw std::invalid_argument("port scan state capacities must be positive");
     }
@@ -55,7 +58,7 @@ std::vector<events::SecurityEvent> PortScanDetector::evaluate(
     const flow::NetworkFlow& flow, const features::FlowFeatures&) noexcept {
     std::lock_guard lock(mutex_);
     expire_locked(flow.last_seen);
-    if (flow.key.protocol != Protocol::TCP || flow.key.src_ip == flow.key.dst_ip
+    if (flow.key.protocol != config_.protocol || flow.key.src_ip == flow.key.dst_ip
         || flow.key.dst_port == 0 || counted_flows_.contains(flow.flow_id)) {
         return {};
     }
@@ -91,6 +94,12 @@ std::vector<events::SecurityEvent> PortScanDetector::evaluate(
                 flow.key.src_ip, flow.key.dst_ip, config_.severity, ports, attempts,
                 static_cast<double>(elapsed_seconds(latest, started)),
                 static_cast<std::uint16_t>(config_.unique_port_threshold), latest);
+            if (config_.protocol == Protocol::UDP) {
+                event.event_type = events::EventType::UDP_SCAN;
+                event.description = "Deterministic UDP port scan detected";
+                event.details.insert_or_assign("detector", std::string("udp_port_scan"));
+                event.details.emplace("transport_protocol", std::string("UDP"));
+            }
             // UUID formatting uses streams, which can absorb bad_alloc into
             // failbit. Treat a truncated result as an error before admission.
             if (event.event_id.size() != 36) {

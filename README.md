@@ -30,7 +30,7 @@
 ## What is Intriqo?
 
 Intriqo is an open-source network security monitoring project under development.
-Core v1 currently validates deterministic `PORT_SCAN` and `SYN_FLOOD` detection,
+Core v1 currently validates deterministic `PORT_SCAN`, `UDP_SCAN`, and `SYN_FLOOD` detection,
 an optional locked-model `ML_ANOMALY` path, and the local
 Detection → Event → Incident → Investigation → Finding → Audit workflow.
 The C++ engine observes authorized Linux traffic or offline/synthetic fixtures;
@@ -42,7 +42,7 @@ The implemented Core v1 flow is:
 ```
 Authorized traffic or controlled replay
       ↓
-C++ IDS Engine          ← parsing, flows, PORT_SCAN/SYN_FLOOD detection
+C++ IDS Engine          ← parsing, flows, PORT_SCAN/UDP_SCAN/SYN_FLOOD detection
       ↓  authenticated SecurityEvent JSON
 FastAPI Control Plane   ← PostgreSQL, correlation, lifecycle, RBAC, audit
       ↓  persisted AgentTask
@@ -183,6 +183,43 @@ recovery, isolated lab traffic, and the complete check matrix. The focused live
 demonstration is documented in [Demo Lab](docs/demo-lab.md) and the
 [Demo Runbook](docs/demo-runbook.md).
 
+## FYP Demo After Reboot
+
+From the repository root, start the isolated attacker/victim lab and Intriqo
+runtime. Select `control-plane/.env` so the Control Plane receives the email
+settings configured there:
+
+```bash
+cd /run/media/rayan/Workspace/01_Projects/intriqo
+export INTRIQO_ENV_FILE=control-plane/.env
+sudo -v
+./scripts/lab/up.sh
+./scripts/lab/status.sh --verify
+./scripts/start-demo.sh
+./scripts/status-intriqo.sh
+curl -fsS http://169.254.77.1:8000/ready
+```
+
+Open `http://127.0.0.1:5173/` and sign in with your analyst account. To
+generate the bounded lab detections, run:
+
+```bash
+./scripts/lab/port-scan.sh
+./scripts/lab/udp-port-scan.sh
+./scripts/lab/syn-flood.sh
+```
+
+Refresh the dashboard, open each event and its incident, create an
+investigation task, then review the completed finding and audit trail. For
+live logs, use `./scripts/logs-intriqo.sh --follow engine` and
+`./scripts/logs-intriqo.sh --follow control-plane` in separate terminals. To
+stop the runtime and lab when finished:
+
+```bash
+./scripts/stop-intriqo.sh --keep-postgres
+./scripts/lab/down.sh
+```
+
 ---
 
 ## Current Status
@@ -268,7 +305,7 @@ all changed files and 300/1800/3600-second local-only release procedures.
 
 | Layer | Status | Details |
 |---|---|---|
-| **C++ Engine** | 🟢 Validated | Deterministic `PORT_SCAN`/`SYN_FLOOD`, synthetic/classic-PCAP paths, bounded state and event sink; live capture remains environment-dependent |
+| **C++ Engine** | 🟢 Validated | Deterministic `PORT_SCAN`/`UDP_SCAN`/`SYN_FLOOD`, synthetic/classic-PCAP paths, bounded state and event sink; live capture remains environment-dependent |
 | **Optional ML** | 🟡 Experimental | Locked native-v2 Isolation Forest worker, disabled by default, hash-checked, analyst-promoted to incidents; not a production accuracy claim |
 | **Control Plane** | 🟢 Core v1 workflow | FastAPI, PostgreSQL persistence, JWT/RBAC, correlation, incident lifecycle, tasks, findings, and audit logs |
 | **Agents** | 🟢 Core v1 investigation | Polling agent with idempotent retries and structured detector-specific evidence |

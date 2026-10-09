@@ -42,7 +42,7 @@ function detailString(details: Record<string, unknown> | undefined, ...keys: str
 export function eventDetectionSource(event: SecurityEvent): string | null {
   const explicit = detailString(event.details, 'detection_source', 'source')
   if (explicit) return explicit
-  if (event.event_type === 'PORT_SCAN' || event.event_type === 'SYN_FLOOD') return 'DETERMINISTIC'
+  if (event.event_type === 'PORT_SCAN' || event.event_type === 'UDP_SCAN' || event.event_type === 'SYN_FLOOD') return 'DETERMINISTIC'
   return null
 }
 
