@@ -49,7 +49,7 @@ function PublicOnlyRoute({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
-function AppShell() {
+function AppShellInner() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -78,6 +78,10 @@ function AppShell() {
   </div>
 }
 
+function AppShell() {
+  return <ThemeProvider><AppShellInner /></ThemeProvider>
+}
+
 export default function App() {
-  return <BrowserRouter><ThemeProvider><AuthProvider><Routes><Route path="/" element={<LandingPage />} /><Route path="/login" element={<PublicOnlyRoute><LoginConsole /></PublicOnlyRoute>} /><Route path="/signup" element={<PublicOnlyRoute><SignupPage /></PublicOnlyRoute>} /><Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPasswordPage /></PublicOnlyRoute>} /><Route path="/verify-email" element={<VerifyEmailPage />} /><Route path="/reset-password" element={<ResetPasswordPage />} /><Route element={<ProtectedRoute />}><Route element={<AppShell />}><Route path="/dashboard" element={<DashboardPage />} /><Route path="/events" element={<EventsPage />} /><Route path="/events/:eventId" element={<EventDetailPage />} /><Route path="/incidents" element={<IncidentsPage />} /><Route path="/incidents/:incidentId" element={<IncidentDetailPage />} /><Route path="/agents" element={<AgentsPage />} /><Route path="/tasks/:taskId" element={<TaskDetailPage />} /><Route path="/findings" element={<FindingsPage />} /><Route path="/findings/:findingId" element={<FindingDetailPage />} /><Route path="/audit" element={<AuditPage />} /><Route path="/settings" element={<SettingsPage />} /><Route path="/detections" element={<Navigate to="/events" replace />} /><Route path="/overview" element={<Navigate to="/dashboard" replace />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Route></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes></AuthProvider></ThemeProvider></BrowserRouter>
+  return <BrowserRouter><AuthProvider><Routes><Route path="/" element={<LandingPage />} /><Route path="/login" element={<PublicOnlyRoute><LoginConsole /></PublicOnlyRoute>} /><Route path="/signup" element={<PublicOnlyRoute><SignupPage /></PublicOnlyRoute>} /><Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPasswordPage /></PublicOnlyRoute>} /><Route path="/verify-email" element={<VerifyEmailPage />} /><Route path="/reset-password" element={<ResetPasswordPage />} /><Route element={<ProtectedRoute />}><Route element={<AppShell />}><Route path="/dashboard" element={<DashboardPage />} /><Route path="/events" element={<EventsPage />} /><Route path="/events/:eventId" element={<EventDetailPage />} /><Route path="/incidents" element={<IncidentsPage />} /><Route path="/incidents/:incidentId" element={<IncidentDetailPage />} /><Route path="/agents" element={<AgentsPage />} /><Route path="/tasks/:taskId" element={<TaskDetailPage />} /><Route path="/findings" element={<FindingsPage />} /><Route path="/findings/:findingId" element={<FindingDetailPage />} /><Route path="/audit" element={<AuditPage />} /><Route path="/settings" element={<SettingsPage />} /><Route path="/detections" element={<Navigate to="/events" replace />} /><Route path="/overview" element={<Navigate to="/dashboard" replace />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Route></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes></AuthProvider></BrowserRouter>
 }

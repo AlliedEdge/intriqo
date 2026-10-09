@@ -18,11 +18,13 @@ import {
 } from './auth'
 import {
   AuthMessage, Badge, Button, Card, EmptyState, ErrorState, Icon, KeyValue, LoadingRows,
-  PageHeader, Pagination, SectionHeading, SeverityBadge, StatusBadge, TableFrame, Logo,
+  PageHeader, Pagination, SectionHeading, SeverityBadge, StatusBadge, TableFrame,
 } from '@/components/ui'
 import { LandingHero } from './landing/LandingHero'
 import { PacketToFindings } from './landing/PacketToFindings'
+import { ArchitectureExplorer } from './landing/ArchitectureExplorer'
 import { AuthConsole } from '@/components/layout/AuthConsole'
+import BeamWordmarkFooter from '@/components/layout/BeamWordmarkFooter'
 import { GridPulse } from '@/components/GridPulse'
 import { SignalGlobe } from '@/components/SignalGlobe'
 import { canMutateWorkflow, createInvestigationTask, investigationBlocker, loadWorkflowAudit, promoteMlAnomaly, type WorkflowAudit } from './workflow'
@@ -228,23 +230,7 @@ function IncidentLifecycleControl({ incidentId, status, disabled, onUpdated }: {
   return <div className="workflow-control lifecycle-control" aria-busy={Boolean(updatingStatus)}><div className="workflow-control-copy"><strong>Incident lifecycle</strong><span>Current status: <StatusBadge status={status} /></span></div>{nextStatuses.length > 0 ? <div className="lifecycle-actions">{nextStatuses.map((nextStatus) => <Button key={nextStatus} size="sm" variant={nextStatus === 'FALSE_POSITIVE' ? 'danger' : 'secondary'} onClick={() => updateStatus(nextStatus)} disabled={disabled || Boolean(updatingStatus)}>{updatingStatus === nextStatus ? 'Updating…' : `Move to ${nextStatus.replace(/_/g, ' ').toLowerCase()}`}</Button>)}</div> : <span className="muted">No further lifecycle transitions are available.</span>}{error && <AuthMessage error>{error}</AuthMessage>}</div>
 }
 
-function ArchitectureFlow() {
-  const steps = ['Network traffic', 'C++ IDS engine', 'SecurityEvent', 'Python control plane', 'AgentTask', 'Investigation', 'Policy decision', 'Audit log']
 
-  return (
-    <div className="architecture-flow">
-      {steps.map((step, index) => (
-        <div className="flow-step-wrap" key={step}>
-          <div className={`flow-step${index === 0 || index === steps.length - 1 ? ' flow-step-emphasis' : ''}`}>
-            <span className="flow-index">{String(index + 1).padStart(2, '0')}</span>
-            <span>{step}</span>
-          </div>
-          {index < steps.length - 1 && <span className="flow-arrow"><Icon name="arrow-right" size={16} /></span>}
-        </div>
-      ))}
-    </div>
-  )
-}
 
 export function LandingPage() {
   return (
@@ -273,12 +259,7 @@ export function LandingPage() {
           </div>{/* .slr-content */}
         </section>
 
-        <section id="architecture" className="public-section architecture-section">
-          <div className="container">
-            <Reveal><div className="section-intro"><p className="eyebrow">CONTROL PLANE / INVESTIGATION</p><h2>One workflow. Explicit boundaries.</h2><p>Intriqo keeps detection, persistence, investigation, policy, and auditability visible as separate, inspectable stages.</p></div></Reveal>
-            <Reveal className="reveal-delay-1"><div className="architecture-card"><ArchitectureFlow /><div className="architecture-caption"><span><span className="legend-dot legend-cyan" />Implemented path</span><span><span className="legend-dot legend-slate" />Contract boundary</span><ExternalLink href={`${GITHUB_URL}/blob/main/docs/architecture/system-architecture.md`} className="inline-link">Read the architecture <Icon name="arrow-up-right" size={14} /></ExternalLink></div></div></Reveal>
-          </div>
-        </section>
+        <ArchitectureExplorer />
 
         <section id="get-intriqo" className="public-section download-section section-light-red">
           <GridPulse className="slr-grid-pulse" />
@@ -323,7 +304,7 @@ export function LandingPage() {
         </section>
       </main>
 
-      <footer className="public-footer container"><Logo /><span>Open-source security operations, with the receipts left in the repository.</span><span>© {new Date().getFullYear()} AlliedEdge</span></footer>
+      <BeamWordmarkFooter />
     </div>
   )
 }
