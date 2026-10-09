@@ -1,0 +1,1007 @@
+/* ==========================================================================
+   Intriqo Architecture Explorer — React Flow Canvas
+   ========================================================================== */
+
+/* ── Section wrapper ─────────────────────────────────────────────────────── */
+.arch-explorer-section {
+  position: relative;
+  z-index: 15;
+  background: var(--bg-soft);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 72px 0 80px;
+}
+
+.arch-explorer-inner {
+  width: min(1340px, calc(100% - 48px));
+  margin: 0 auto;
+}
+
+/* ── Section header ──────────────────────────────────────────────────────── */
+.arch-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  margin-bottom: 36px;
+}
+
+.arch-header-copy {
+  max-width: 560px;
+}
+
+.arch-header-copy h2 {
+  margin: 10px 0 14px;
+  color: var(--text-primary);
+  font-size: clamp(1.7rem, 2.8vw, 2.4rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+}
+
+.arch-header-copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+/* ── Progress summary bar ────────────────────────────────────────────────── */
+.arch-progress-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  padding: 16px 20px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  margin-bottom: 20px;
+}
+
+.arch-progress-coverage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 160px;
+}
+
+.arch-progress-coverage-label {
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.arch-progress-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-highlight);
+  overflow: hidden;
+}
+
+.arch-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #10bbe0, #45c994);
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.arch-progress-coverage-value {
+  color: var(--primary-bright);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.arch-stat-divider {
+  width: 1px;
+  height: 28px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.arch-stat {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.72rem;
+}
+
+.arch-stat-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.arch-stat-count {
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.arch-stat-label {
+  color: var(--text-muted);
+}
+
+.arch-total-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+}
+
+/* ── Controls row ────────────────────────────────────────────────────────── */
+.arch-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.arch-search-wrap {
+  position: relative;
+  flex: 0 0 220px;
+}
+
+.arch-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.arch-search-input {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px 0 33px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.arch-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.arch-search-input:focus {
+  border-color: var(--primary);
+}
+
+.arch-controls-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.arch-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: border-color 0.14s ease, color 0.14s ease, background 0.14s ease;
+  cursor: pointer;
+}
+
+.arch-filter-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.arch-filter-btn.is-active {
+  border-color: var(--primary);
+  background: var(--primary-dim);
+  color: var(--primary-bright);
+}
+
+.arch-filter-btn .arch-filter-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.arch-filter-btn-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.14s ease;
+}
+
+.arch-filter-btn-reset:hover {
+  color: var(--danger);
+}
+
+.arch-view-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.arch-view-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.arch-view-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.arch-view-btn.is-active {
+  border-color: rgba(16, 187, 224, 0.4);
+  background: rgba(16, 187, 224, 0.08);
+  color: var(--primary-bright);
+}
+
+/* ── Canvas container ────────────────────────────────────────────────────── */
+.arch-canvas-wrap {
+  position: relative;
+  height: 680px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.arch-canvas-wrap .react-flow__background {
+  opacity: 0.5;
+}
+
+/* React Flow overrides — dark theme */
+.arch-canvas-wrap .react-flow__controls {
+  bottom: 16px;
+  left: 16px;
+  box-shadow: none;
+}
+
+.arch-canvas-wrap .react-flow__controls-button {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border) !important;
+  border-radius: 4px !important;
+  background: var(--surface) !important;
+  color: var(--text-secondary) !important;
+  fill: var(--text-secondary) !important;
+  margin-bottom: 3px;
+  transition: border-color 0.14s ease, color 0.14s ease;
+}
+
+.arch-canvas-wrap .react-flow__controls-button:hover {
+  border-color: var(--primary) !important;
+  color: var(--primary-bright) !important;
+  fill: var(--primary-bright) !important;
+}
+
+.arch-canvas-wrap .react-flow__minimap {
+  bottom: 16px;
+  right: 16px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.arch-canvas-wrap .react-flow__minimap-svg {
+  background: var(--surface) !important;
+}
+
+.arch-canvas-wrap .react-flow__edge-path {
+  stroke-width: 1.5;
+}
+
+.arch-canvas-wrap .react-flow__edge.animated .react-flow__edge-path {
+  animation: flow-dash 1.8s linear infinite;
+}
+
+/* Edge label tooltip-style */
+.arch-canvas-wrap .react-flow__edge-label {
+  font-size: 0.58rem;
+  fill: var(--text-muted);
+  pointer-events: none;
+}
+
+.arch-canvas-wrap .react-flow__attribution {
+  display: none;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.arch-empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.arch-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-elevated);
+  color: var(--text-muted);
+}
+
+/* ── Custom arch node ────────────────────────────────────────────────────── */
+.arch-node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 178px;
+  padding: 11px 12px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.14s ease,
+    opacity 0.2s ease;
+  outline: none;
+}
+
+.arch-node:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.arch-node:focus-visible {
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
+/* Status-driven left accent bar */
+.arch-node::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+.arch-node.status-implemented { color: #45c994; }
+.arch-node.status-partial      { color: #f4b740; }
+.arch-node.status-planned      { color: #a78bfa; }
+.arch-node.status-placeholder  { color: #ea8535; }
+.arch-node.status-unverified   { color: #6e8490; }
+
+/* Selected state */
+.arch-node.is-selected {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 1px var(--primary), 0 8px 24px rgba(16, 187, 224, 0.18) !important;
+}
+
+/* Dimmed state when another node is selected */
+.arch-node.is-dimmed {
+  opacity: 0.28;
+  transform: none;
+}
+
+/* Planned nodes get dashed border */
+.arch-node.status-planned {
+  border-style: dashed;
+  border-color: rgba(167, 139, 250, 0.35);
+}
+
+/* Node header row */
+.arch-node-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.arch-node-icon-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  background: rgba(16, 187, 224, 0.08);
+  border: 1px solid rgba(16, 187, 224, 0.16);
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.arch-node.status-implemented .arch-node-icon-box {
+  background: rgba(69, 201, 148, 0.1);
+  border-color: rgba(69, 201, 148, 0.22);
+  color: #45c994;
+}
+
+.arch-node.status-partial .arch-node-icon-box {
+  background: rgba(244, 183, 64, 0.1);
+  border-color: rgba(244, 183, 64, 0.22);
+  color: #f4b740;
+}
+
+.arch-node.status-planned .arch-node-icon-box {
+  background: rgba(167, 139, 250, 0.08);
+  border-color: rgba(167, 139, 250, 0.2);
+  color: #a78bfa;
+}
+
+.arch-node.status-placeholder .arch-node-icon-box {
+  background: rgba(234, 133, 53, 0.1);
+  border-color: rgba(234, 133, 53, 0.22);
+  color: #ea8535;
+}
+
+.arch-node.status-unverified .arch-node-icon-box {
+  background: rgba(110, 132, 144, 0.1);
+  border-color: rgba(110, 132, 144, 0.2);
+  color: #6e8490;
+}
+
+/* Status badge */
+.arch-node-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.arch-node.status-implemented .arch-node-badge {
+  background: rgba(69, 201, 148, 0.1);
+  border-color: rgba(69, 201, 148, 0.25);
+  color: #45c994;
+}
+.arch-node.status-partial .arch-node-badge {
+  background: rgba(244, 183, 64, 0.1);
+  border-color: rgba(244, 183, 64, 0.25);
+  color: #f4b740;
+}
+.arch-node.status-planned .arch-node-badge {
+  background: rgba(167, 139, 250, 0.08);
+  border-color: rgba(167, 139, 250, 0.22);
+  color: #a78bfa;
+}
+.arch-node.status-placeholder .arch-node-badge {
+  background: rgba(234, 133, 53, 0.1);
+  border-color: rgba(234, 133, 53, 0.22);
+  color: #ea8535;
+}
+.arch-node.status-unverified .arch-node-badge {
+  background: rgba(110, 132, 144, 0.08);
+  border-color: rgba(110, 132, 144, 0.2);
+  color: #6e8490;
+}
+
+.arch-node-badge-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Node label */
+.arch-node-label {
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.arch-node-sublabel {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 0.63rem;
+  line-height: 1.3;
+}
+
+.arch-node-tech {
+  display: inline-block;
+  margin-top: 7px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: rgba(28, 48, 61, 0.6);
+  color: var(--text-muted);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.58rem;
+  font-weight: 600;
+}
+
+/* Verified tick */
+.arch-node-verified {
+  position: absolute;
+  top: 7px;
+  right: 38px;
+  color: #45c994;
+  opacity: 0.7;
+}
+
+/* Handle styles */
+.arch-node .react-flow__handle {
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-elevated);
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.arch-node .react-flow__handle:hover {
+  background: var(--primary);
+  border-color: var(--primary-bright);
+}
+
+/* ── Group / sub-layer container nodes ───────────────────────────────────── */
+.arch-group-node {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(11, 18, 26, 0.5);
+  pointer-events: none;
+}
+
+.arch-group-label {
+  position: absolute;
+  top: -11px;
+  left: 14px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ── Detail panel / drawer ───────────────────────────────────────────────── */
+.arch-detail-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  z-index: 10;
+  overflow: hidden;
+  animation: slide-in-right 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.arch-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 16px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.arch-detail-head-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.arch-detail-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  background: rgba(16, 187, 224, 0.08);
+  border: 1px solid rgba(16, 187, 224, 0.16);
+  color: var(--primary);
+}
+
+.arch-detail-title {
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.arch-detail-sublabel {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+}
+
+.arch-detail-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: border-color 0.14s ease, color 0.14s ease;
+}
+
+.arch-detail-close:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.arch-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.arch-detail-body::-webkit-scrollbar {
+  width: 4px;
+}
+.arch-detail-body::-webkit-scrollbar-track { background: transparent; }
+.arch-detail-body::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 2px;
+}
+
+.arch-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.arch-detail-section-title {
+  color: var(--text-muted);
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.arch-detail-text {
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  line-height: 1.6;
+}
+
+.arch-detail-text.is-warning {
+  color: #f4b740;
+}
+
+.arch-detail-text.is-planned {
+  color: #a78bfa;
+}
+
+.arch-detail-files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.arch-detail-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px;
+  border-radius: 3px;
+  background: var(--surface-elevated);
+  color: var(--primary-bright);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.62rem;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.arch-detail-file-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.arch-detail-badge-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.arch-detail-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.arch-detail-badge.layer {
+  background: rgba(16, 187, 224, 0.08);
+  border-color: rgba(16, 187, 224, 0.2);
+  color: var(--primary-bright);
+}
+
+.arch-detail-badge.type {
+  background: var(--surface-elevated);
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+
+.arch-detail-badge.verified {
+  background: rgba(69, 201, 148, 0.08);
+  border-color: rgba(69, 201, 148, 0.22);
+  color: #45c994;
+}
+
+.arch-detail-note {
+  padding: 8px 10px;
+  border-left: 2px solid;
+  border-radius: 0 4px 4px 0;
+  font-size: 0.7rem;
+  line-height: 1.55;
+}
+
+.arch-detail-note.warning {
+  border-color: #f4b740;
+  background: rgba(244, 183, 64, 0.06);
+  color: #f4b740;
+}
+
+.arch-detail-note.info {
+  border-color: var(--primary);
+  background: var(--primary-dim);
+  color: var(--text-secondary);
+}
+
+/* ── Legend ──────────────────────────────────────────────────────────────── */
+.arch-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+}
+
+.arch-legend-title {
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.arch-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+}
+
+.arch-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+}
+
+.arch-legend-swatch.implemented {
+  background: rgba(69, 201, 148, 0.2);
+  border-color: rgba(69, 201, 148, 0.4);
+}
+.arch-legend-swatch.partial {
+  background: rgba(244, 183, 64, 0.2);
+  border-color: rgba(244, 183, 64, 0.4);
+}
+.arch-legend-swatch.planned {
+  background: rgba(167, 139, 250, 0.1);
+  border-color: rgba(167, 139, 250, 0.35);
+  border-style: dashed;
+}
+.arch-legend-swatch.placeholder {
+  background: rgba(234, 133, 53, 0.15);
+  border-color: rgba(234, 133, 53, 0.4);
+}
+.arch-legend-swatch.unverified {
+  background: rgba(110, 132, 144, 0.12);
+  border-color: rgba(110, 132, 144, 0.3);
+}
+
+.arch-legend-edge-impl {
+  display: inline-block;
+  width: 22px;
+  height: 2px;
+  background: #45c994;
+  border-radius: 1px;
+}
+
+.arch-legend-edge-partial {
+  display: inline-block;
+  width: 22px;
+  height: 2px;
+  border-top: 2px dashed #f4b740;
+}
+
+.arch-legend-edge-planned {
+  display: inline-block;
+  width: 22px;
+  height: 2px;
+  border-top: 2px dashed rgba(167, 139, 250, 0.5);
+}
+
+/* ── Keyboard hint ───────────────────────────────────────────────────────── */
+.arch-kbd-hint {
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 0.64rem;
+  text-align: center;
+}
+
+.arch-kbd-hint kbd {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-elevated);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.62rem;
+}
+
+/* ── Animations ──────────────────────────────────────────────────────────── */
+@keyframes flow-dash {
+  to { stroke-dashoffset: -16; }
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .arch-explorer-section {
+    padding: 52px 0 60px;
+  }
+
+  .arch-header {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .arch-canvas-wrap {
+    height: 520px;
+  }
+
+  .arch-detail-panel {
+    width: 280px;
+  }
+
+  .arch-progress-bar {
+    gap: 8px 14px;
+  }
+
+  .arch-controls {
+    gap: 6px;
+  }
+
+  .arch-view-group {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .arch-explorer-inner {
+    width: calc(100% - 32px);
+  }
+
+  .arch-canvas-wrap {
+    height: 440px;
+  }
+
+  .arch-detail-panel {
+    width: 100%;
+    top: auto;
+    height: 50%;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    animation: slide-in-bottom 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes slide-in-bottom {
+    from { transform: translateY(100%); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+
+  .arch-stat-divider { display: none; }
+
+  .arch-search-wrap {
+    flex: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arch-canvas-wrap .react-flow__edge.animated .react-flow__edge-path {
+    animation: none;
+  }
+  .arch-node {
+    transition: opacity 0.1s ease;
+  }
+  .arch-detail-panel {
+    animation: none;
+  }
+}
