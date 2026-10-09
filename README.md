@@ -190,7 +190,6 @@ runtime. Select `control-plane/.env` so the Control Plane receives the email
 settings configured there:
 
 ```bash
-cd /run/media/rayan/Workspace/01_Projects/intriqo
 export INTRIQO_ENV_FILE=control-plane/.env
 sudo -v
 ./scripts/lab/up.sh
