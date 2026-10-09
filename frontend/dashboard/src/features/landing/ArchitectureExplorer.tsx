@@ -11,7 +11,6 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  MiniMap,
   Handle,
   Position,
   getBezierPath,
@@ -173,55 +172,76 @@ const EDGE_TYPES = {
 
 // ─── Hand-placed layout positions ────────────────────────────────────────────
 
+// Layout philosophy:
+//   • Left-to-right data flow: Network → Engine → Contracts → Control Plane → Agents → Frontend
+//   • Max canvas height ~950 px so fitView lands at a comfortable zoom in the 680 px container
+//   • Detectors split into two sub-columns (left=stateful, right=planned) to halve height
+//   • CP services split into two sub-columns (left=ingestion chain, right=policy+infra)
+//   • ML pipeline drops below the Contracts column — separate swim-lane
+//   • Node card is ~190 × 110 px; vertical gap 160 px, horizontal gap 260 px
 const NODE_POSITIONS: Record<string, { x: number; y: number }> = {
-  // Network — col 0
-  'live-capture':            { x:    0, y:   40 },
-  'pcap-replay':             { x:    0, y:  200 },
-  'synthetic-source':        { x:    0, y:  360 },
-  // Engine parsing / flow — col 1
-  'packet-parser':           { x:  210, y:  120 },
-  'flow-table':              { x:  210, y:  280 },
-  // Engine pipeline + detectors — col 2
-  'pipeline':                { x:  410, y:   40 },
-  'port-scan-detector':      { x:  410, y:  200 },
-  'udp-scan-detector':       { x:  410, y:  340 },
-  'syn-flood-detector':      { x:  410, y:  480 },
-  'brute-force-detector':    { x:  410, y:  620 },
-  'dns-anomaly-detector':    { x:  410, y:  760 },
-  'feature-sink':            { x:  410, y:  900 },
-  'http-event-sink':         { x:  410, y: 1040 },
-  // Contracts — col 3
-  'security-event-contract': { x:  620, y:  180 },
-  'flow-feature-contract':   { x:  620, y:  900 },
-  // Control Plane services — col 4
-  'fastapi-server':          { x:  830, y:    0 },
-  'auth-service':            { x:  830, y:  150 },
-  'event-service':           { x:  830, y:  290 },
-  'correlation-service':     { x:  830, y:  430 },
-  'incident-service':        { x:  830, y:  570 },
-  'task-service':            { x:  830, y:  710 },
-  'audit-service':           { x:  830, y:  850 },
-  'policy-engine':           { x:  830, y:  990 },
-  'websocket':               { x:  830, y: 1130 },
-  // Data stores — col 5
-  'postgresql':              { x: 1040, y:  500 },
-  'redis':                   { x: 1040, y:  680 },
-  // ML pipeline — between CP and agents
-  'ml-worker':               { x:  620, y: 1060 },
-  'isolation-forest':        { x:  620, y: 1200 },
-  'training-pipeline':       { x:  620, y: 1340 },
-  // Agents — col 6
-  'orchestrator':            { x: 1250, y:  130 },
-  'investigation-agent':     { x: 1250, y:  280 },
-  'threat-intel-agent':      { x: 1250, y:  430 },
-  'correlation-agent':       { x: 1250, y:  580 },
-  'response-agent':          { x: 1250, y:  730 },
-  'llm-integration':         { x: 1250, y:  880 },
-  // Frontend — col 7
-  'soc-dashboard':           { x: 1460, y:   80 },
-  'approvals-ui':            { x: 1460, y:  240 },
-  // Infrastructure
-  'prometheus':              { x: 1460, y:  450 },
+
+  // ── col 0 · Network Sources ──────────────────────────────────────────────
+  'live-capture':            { x:    0, y:   60 },
+  'pcap-replay':             { x:    0, y:  240 },
+  'synthetic-source':        { x:    0, y:  420 },
+
+  // ── col 1 · Packet parsing + flow ────────────────────────────────────────
+  'packet-parser':           { x:  260, y:  150 },
+  'flow-table':              { x:  260, y:  330 },
+
+  // ── col 2a · Pipeline + implemented detectors ─────────────────────────────
+  'pipeline':                { x:  520, y:   20 },
+  'port-scan-detector':      { x:  520, y:  200 },
+  'udp-scan-detector':       { x:  520, y:  380 },
+  'syn-flood-detector':      { x:  520, y:  560 },
+
+  // ── col 2b · Planned detectors (offset right to avoid overlap) ────────────
+  'brute-force-detector':    { x:  730, y:  380 },
+  'dns-anomaly-detector':    { x:  730, y:  560 },
+
+  // ── col 2c · Output sinks (right of detectors, vertically centred) ────────
+  'feature-sink':            { x:  730, y:  160 },
+  'http-event-sink':         { x:  730, y:  -20 },
+
+  // ── col 3 · Contracts ─────────────────────────────────────────────────────
+  'flow-feature-contract':   { x:  990, y:  160 },
+  'security-event-contract': { x:  990, y:  -20 },
+
+  // ── ML swim-lane (below contracts, same x) ────────────────────────────────
+  'ml-worker':               { x:  990, y:  380 },
+  'isolation-forest':        { x:  990, y:  560 },
+  'training-pipeline':       { x:  990, y:  740 },
+
+  // ── col 4a · Control Plane — ingestion + correlation chain ────────────────
+  'fastapi-server':          { x: 1250, y:  -20 },
+  'auth-service':            { x: 1250, y:  160 },
+  'event-service':           { x: 1250, y:  340 },
+  'correlation-service':     { x: 1250, y:  520 },
+  'incident-service':        { x: 1250, y:  700 },
+
+  // ── col 4b · Control Plane — task + audit + policy + infra ───────────────
+  'task-service':            { x: 1510, y:  340 },
+  'audit-service':           { x: 1510, y:  520 },
+  'policy-engine':           { x: 1510, y:  700 },
+  'websocket':               { x: 1510, y:  880 },
+
+  // ── col 5 · Data stores ───────────────────────────────────────────────────
+  'postgresql':              { x: 1770, y:  430 },
+  'redis':                   { x: 1770, y:  610 },
+
+  // ── col 6 · Investigation Agents ─────────────────────────────────────────
+  'orchestrator':            { x: 2030, y:  -20 },
+  'investigation-agent':     { x: 2030, y:  160 },
+  'threat-intel-agent':      { x: 2030, y:  340 },
+  'correlation-agent':       { x: 2030, y:  520 },
+  'response-agent':          { x: 2030, y:  700 },
+  'llm-integration':         { x: 2030, y:  880 },
+
+  // ── col 7 · Frontend + Infrastructure ────────────────────────────────────
+  'soc-dashboard':           { x: 2290, y:   60 },
+  'approvals-ui':            { x: 2290, y:  240 },
+  'prometheus':              { x: 2290, y:  430 },
 }
 
 // ─── View presets ─────────────────────────────────────────────────────────────
@@ -678,15 +698,6 @@ function CanvasInner() {
         >
           <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="rgba(16,187,224,0.08)" />
           <Controls showInteractive={false} />
-          <MiniMap
-            nodeColor={node => {
-              const d = node.data as { status?: ImplementationStatus }
-              return d.status ? (STATUS_COLORS[d.status]?.dot ?? '#3a5060') : '#3a5060'
-            }}
-            maskColor="rgba(5,9,15,0.75)"
-            nodeStrokeWidth={0}
-            style={{ width: 140, height: 90 }}
-          />
         </ReactFlow>
 
         {/* Empty state */}
