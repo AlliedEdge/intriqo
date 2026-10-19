@@ -19,6 +19,7 @@ The supported event types remain distinct:
 | Event type | Detection source | Detector receipt |
 | --- | --- | --- |
 | `PORT_SCAN` | `DETERMINISTIC` | `details.detector` (`port_scan` from the C++ engine) |
+| `UDP_SCAN` | `DETERMINISTIC` | `details.detector` (`udp_scan` from the C++ engine) |
 | `SYN_FLOOD` | `DETERMINISTIC` | `details.detector` (`syn_flood` from the C++ engine) |
 | `ML_ANOMALY` | `ML` | `details.detector` (`isolation_forest_v2`) |
 
@@ -30,7 +31,7 @@ payload-free detector/model receipt from the locked ML worker.
 
 ## Correlation rules
 
-`PORT_SCAN` and `SYN_FLOOD` are automatically correlated. The stable,
+`PORT_SCAN`, `UDP_SCAN`, and `SYN_FLOOD` are automatically correlated. The stable,
 directional correlation key is:
 
 ```text
@@ -67,15 +68,22 @@ state: investigation completion is separate from containment and resolution.
 
 ## Investigation and findings
 
-An analyst or controlled workflow creates an `INVESTIGATION` AgentTask with
-both `event_id` and `incident_id`. The existing poller or one-shot runner
-passes that task to `InvestigationAgent`. Supported handlers are:
+When a trusted engine identity (the local default is `ids-engine-local`) ingests
+an eligible deterministic event, the Control Plane automatically persists one
+`PENDING` `INVESTIGATION` AgentTask after correlation. The task carries both
+`event_id` and `incident_id`, uses the event severity as its priority, and is
+idempotent on `INVESTIGATION|event:<event_id>`. Analysts can still create tasks
+manually through the existing endpoint. The existing poller or one-shot runner
+passes either task path to `InvestigationAgent`. Supported handlers are:
 
 - `PORT_SCAN`: structured port/count/attempt evidence;
 - `SYN_FLOOD`: source, destination port, SYN count, incomplete handshake
   count, ratio, rate, window, and detector evidence;
 - `ML_ANOMALY`: flow ID, score, threshold, model/threshold hashes, model
   version, detector, engine instance, and frozen feature schema version.
+
+`ML_ANOMALY` promotion to an incident and any related investigation task remain
+manual analyst actions. Unsupported event types also never auto-create tasks.
 
 No handler executes arbitrary host commands, stores packet payloads, includes
 ground-truth labels, or performs remediation. ML severity is the worker's
@@ -129,8 +137,9 @@ without substituting fake counters or fixture data.
 
 ## Known limitations
 
-- Task creation remains an explicit analyst/controlled-workflow action; this
-  milestone does not add a new broker or autonomous response loop.
+- Trusted deterministic engine events may auto-queue investigation tasks; this
+  does not add a new broker or autonomous response loop. Analyst ML promotion
+  remains manual.
 - ML promotion to an incident requires an analyst, except when it is attached
   to an existing deterministic situation by the analyst link operation.
 - The ML detector and artifacts remain experimental and locked to the existing

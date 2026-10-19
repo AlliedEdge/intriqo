@@ -208,9 +208,11 @@ generate the bounded lab detections, run:
 ./scripts/lab/syn-flood.sh
 ```
 
-Refresh the dashboard, open each event and its incident, create an
-investigation task, then review the completed finding and audit trail. For
-live logs, use `./scripts/logs-intriqo.sh --follow engine` and
+Refresh the dashboard, open each event and its incident, then review the
+automatically queued investigation task, completed finding, and audit trail.
+The trusted local engine identity queues one task for each eligible
+deterministic event; ML anomaly promotion remains an analyst action. For live
+logs, use `./scripts/logs-intriqo.sh --follow engine` and
 `./scripts/logs-intriqo.sh --follow control-plane` in separate terminals. To
 stop the runtime and lab when finished:
 

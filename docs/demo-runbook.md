@@ -140,9 +140,10 @@ While the bounded traffic runs:
 3. Show the event detail: `HIGH` severity, `10.77.0.10`, `10.77.0.20`, detector,
    deterministic source, timestamps, threshold, unique ports, attempts, and
    linked incident.
-4. Open the incident and select **Create investigation task**. This is the
-   existing authenticated analyst API and creates a real `INVESTIGATION`
-   AgentTask linked to the event and incident.
+4. Open the incident and show the automatically queued `PENDING`
+   `INVESTIGATION` AgentTask linked to the event and incident. Selecting
+   **Create investigation task** remains safe and idempotent if the analyst
+   wants to confirm the existing task through the authenticated API.
 5. Move the incident to `INVESTIGATING` with the lifecycle control.
 
 The agent poller will read the persisted task. Refresh until the task is

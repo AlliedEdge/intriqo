@@ -25,8 +25,8 @@ os.environ["REQUIRE_EMAIL_VERIFICATION"] = "false"
 
 # Bust the lru_cache so the patched env vars take effect before any import
 # of intriqo.config happens during test collection.
-import importlib
 import sys
+
 if "intriqo.config" in sys.modules:
     from intriqo.config import get_settings
     get_settings.cache_clear()
@@ -143,6 +143,14 @@ def analyst_headers(analyst_token):
 @pytest.fixture
 def agent_headers(agent_token):
     return {"Authorization": f"Bearer {agent_token}"}
+
+
+@pytest.fixture
+def trusted_engine_headers():
+    token = create_access_token(
+        subject="ids-engine-local", role="AGENT", extra={"user_id": "user-engine-local"}
+    )
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture

@@ -6,11 +6,10 @@ import pytest
 from pydantic import ValidationError
 
 from intriqo.config import Settings
-from intriqo.schemas.events import SecurityEventCreate
-from intriqo.schemas.incidents import IncidentCreate
 from intriqo.schemas.agent_tasks import AgentTaskCreate
+from intriqo.schemas.events import SecurityEventCreate
 from intriqo.schemas.findings import FindingCreate
-
+from intriqo.schemas.incidents import IncidentCreate
 
 # ── SecurityEventCreate ───────────────────────────────────────────────────────
 
@@ -157,3 +156,19 @@ class TestAgentTaskLeaseSettings:
     def test_lease_is_bounded(self, value):
         with pytest.raises(ValidationError, match="AGENT_TASK_LEASE_SECONDS"):
             Settings(agent_task_lease_seconds=value)
+
+
+class TestAutomaticInvestigationTaskSettings:
+    def test_trusted_engine_dispatch_is_enabled_by_default(self):
+        settings = Settings(_env_file=None)
+        assert settings.auto_create_investigation_tasks is True
+        assert settings.trusted_event_ingestion_actors == ["ids-engine-local"]
+
+    def test_dispatch_settings_are_read_from_environment(self, monkeypatch):
+        monkeypatch.setenv("AUTO_CREATE_INVESTIGATION_TASKS", "false")
+        monkeypatch.setenv(
+            "TRUSTED_EVENT_INGESTION_ACTORS", '["custom-engine", "backup-engine"]'
+        )
+        settings = Settings(_env_file=None)
+        assert settings.auto_create_investigation_tasks is False
+        assert settings.trusted_event_ingestion_actors == ["custom-engine", "backup-engine"]

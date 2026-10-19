@@ -16,13 +16,23 @@ from datetime import datetime, timezone
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from intriqo.config import get_settings
 from intriqo.db.models.security_event import SecurityEvent
 from intriqo.repositories.events import EventRepository
+from intriqo.schemas.agent_tasks import AgentTaskCreate
 from intriqo.schemas.events import SecurityEventCreate
 from intriqo.services import audit_service
-from intriqo.services.correlation_service import correlate_event
+from intriqo.services.agent_task_service import create_task
+from intriqo.services.correlation_service import DETERMINISTIC_EVENT_TYPES, correlate_event
 
 logger = logging.getLogger("intriqo.services.event")
+
+_SEVERITY_TO_TASK_PRIORITY = {
+    "LOW": "LOW",
+    "MEDIUM": "MEDIUM",
+    "HIGH": "HIGH",
+    "CRITICAL": "URGENT",
+}
 
 
 class DuplicateEventError(Exception):
@@ -75,11 +85,34 @@ async def ingest_event(
 
     incident = await correlate_event(db, event, actor=actor)
     if incident is not None:
+        settings = get_settings()
+        event_type = event.event_type.strip().upper()
+        if (
+            settings.auto_create_investigation_tasks
+            and event_type in DETERMINISTIC_EVENT_TYPES
+            and actor in settings.trusted_event_ingestion_actors
+        ):
+            await create_task(
+                db,
+                AgentTaskCreate(
+                    task_type="INVESTIGATION",
+                    description=(
+                        f"Investigate correlated {event_type} event {event.event_id}"
+                    ),
+                    priority=_SEVERITY_TO_TASK_PRIORITY[event.severity],
+                    idempotency_key=f"INVESTIGATION|event:{event.event_id}",
+                    event_id=event.event_id,
+                    incident_id=incident.incident_id,
+                    context={"dispatch": "automatic_deterministic"},
+                ),
+                actor=actor,
+                idempotency_key=f"INVESTIGATION|event:{event.event_id}",
+            )
         # The event may have been loaded with an empty select-in relationship
         # before correlation inserted the association row. Refresh it before
         # constructing the response so the POST result is immediately
-        # traceable to its incident.
-        await db.refresh(event, attribute_names=["incident_links"])
+        # traceable to its incident and any automatically dispatched task.
+        await db.refresh(event, attribute_names=["incident_links", "agent_tasks"])
 
     await audit_service.record(
         db,

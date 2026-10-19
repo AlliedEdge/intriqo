@@ -70,6 +70,7 @@ secrets. The existing canonical names are:
 | ML model schema | `INTRIQO_ML_FEATURE_SCHEMA_PATH` |
 | Frozen contract | `INTRIQO_ML_FEATURE_CONTRACT_PATH` |
 | Locked hashes | `INTRIQO_ML_EXPECTED_MODEL_SHA256`, `INTRIQO_ML_EXPECTED_THRESHOLD_SHA256` |
+| Automatic deterministic investigations | `AUTO_CREATE_INVESTIGATION_TASKS`, `TRUSTED_EVENT_INGESTION_ACTORS` |
 | Development token refresh | `INTRIQO_JWT_REFRESH_MARGIN_SECONDS` |
 
 `DATABASE_URL` is the async SQLAlchemy URL. Alembic derives its synchronous

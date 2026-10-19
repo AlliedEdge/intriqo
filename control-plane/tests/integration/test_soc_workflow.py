@@ -64,6 +64,124 @@ async def test_udp_scan_is_persisted_as_deterministic_correlated_event(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("severity", "priority"),
+    [("LOW", "LOW"), ("MEDIUM", "MEDIUM"), ("HIGH", "HIGH"), ("CRITICAL", "URGENT")],
+)
+async def test_trusted_deterministic_event_auto_creates_pending_investigation(
+    client, trusted_engine_headers, analyst_headers, severity, priority
+):
+    event = _event("PORT_SCAN", "2026-10-01T13:30:00Z")
+    event["severity"] = severity
+
+    response = await client.post(
+        "/api/v1/events", json=event, headers=trusted_engine_headers
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert len(body["linked_incident_ids"]) == 1
+    assert len(body["linked_task_ids"]) == 1
+
+    tasks = await client.get(
+        f"/api/v1/agent-tasks?event_id={event['event_id']}",
+        headers=trusted_engine_headers,
+    )
+    assert tasks.status_code == 200, tasks.text
+    assert tasks.json()["total"] == 1
+    task = tasks.json()["items"][0]
+    assert task["task_id"] == body["linked_task_ids"][0]
+    assert task["task_type"] == "INVESTIGATION"
+    assert task["status"] == "PENDING"
+    assert task["priority"] == priority
+    assert task["event_id"] == event["event_id"]
+    assert task["incident_id"] == body["linked_incident_ids"][0]
+    assert task["idempotency_key"] == f"INVESTIGATION|event:{event['event_id']}"
+    assert task["context"]["dispatch"] == "automatic_deterministic"
+
+    audit = await client.get(
+        f"/api/v1/audit?resource_type=agent_task&resource_id={task['task_id']}",
+        headers=analyst_headers,
+    )
+    assert audit.status_code == 200, audit.text
+    assert any(
+        item["action"] == "TASK_CREATED" and item["actor"] == "ids-engine-local"
+        for item in audit.json()["items"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_repeated_task_dispatch_idempotency_does_not_duplicate(
+    client, trusted_engine_headers, analyst_headers
+):
+    event = _event("SYN_FLOOD", "2026-10-01T13:40:00Z")
+    created = await client.post(
+        "/api/v1/events", json=event, headers=trusted_engine_headers
+    )
+    assert created.status_code == 201, created.text
+    task_id = created.json()["linked_task_ids"][0]
+    incident_id = created.json()["linked_incident_ids"][0]
+
+    retry = await client.post(
+        "/api/v1/agent-tasks",
+        json={
+            "task_type": "INVESTIGATION",
+            "description": "Retry deterministic dispatch",
+            "priority": "LOW",
+            "event_id": event["event_id"],
+            "incident_id": incident_id,
+        },
+        headers=analyst_headers,
+    )
+    assert retry.status_code == 201, retry.text
+    assert retry.json()["task_id"] == task_id
+
+    tasks = await client.get(
+        f"/api/v1/agent-tasks?event_id={event['event_id']}", headers=analyst_headers
+    )
+    assert tasks.status_code == 200
+    assert tasks.json()["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_untrusted_agent_event_does_not_auto_create_task(client, agent_headers):
+    event = _event("PORT_SCAN", "2026-10-01T13:50:00Z")
+    response = await client.post("/api/v1/events", json=event, headers=agent_headers)
+
+    assert response.status_code == 201, response.text
+    assert len(response.json()["linked_incident_ids"]) == 1
+    assert response.json()["linked_task_ids"] == []
+
+    tasks = await client.get(
+        f"/api/v1/agent-tasks?event_id={event['event_id']}", headers=agent_headers
+    )
+    assert tasks.status_code == 200
+    assert tasks.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_trusted_ml_anomaly_does_not_auto_create_task(client, trusted_engine_headers):
+    event = _event("ML_ANOMALY", "2026-10-01T14:00:00Z")
+    response = await client.post("/api/v1/events", json=event, headers=trusted_engine_headers)
+
+    assert response.status_code == 201, response.text
+    assert response.json()["linked_incident_ids"] == []
+    assert response.json()["linked_task_ids"] == []
+
+
+@pytest.mark.asyncio
+async def test_trusted_unsupported_event_does_not_auto_create_task(
+    client, trusted_engine_headers
+):
+    event = _event("UNSUPPORTED_DETECTOR", "2026-10-01T14:10:00Z")
+    response = await client.post("/api/v1/events", json=event, headers=trusted_engine_headers)
+
+    assert response.status_code == 201, response.text
+    assert response.json()["linked_incident_ids"] == []
+    assert response.json()["linked_task_ids"] == []
+
+
+@pytest.mark.asyncio
 async def test_lifecycle_rejects_skips_and_same_state_is_idempotent(
     client, analyst_headers
 ):

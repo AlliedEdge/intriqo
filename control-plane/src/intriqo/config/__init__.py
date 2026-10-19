@@ -91,6 +91,19 @@ class Settings(BaseSettings):
     agent_service_url: str = "http://localhost:8001"
     agent_task_lease_seconds: int = 300
 
+    # ── Deterministic investigation dispatch ─────────────────────────────────
+    # Only explicitly trusted event-ingestion identities may cause a
+    # deterministic correlation to enqueue an investigation task. The local
+    # engine identity is the safe default; other AGENT identities remain able
+    # to ingest events without gaining an indirect task-creation capability.
+    auto_create_investigation_tasks: bool = True
+    trusted_event_ingestion_actors: list[str] = ["ids-engine-local"]
+
+    @field_validator("trusted_event_ingestion_actors")
+    @classmethod
+    def normalize_trusted_event_ingestion_actors(cls, value: list[str]) -> list[str]:
+        return [actor.strip() for actor in value if actor.strip()]
+
     @field_validator("agent_task_lease_seconds")
     @classmethod
     def validate_agent_task_lease_seconds(cls, value: int) -> int:
