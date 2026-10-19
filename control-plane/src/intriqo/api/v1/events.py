@@ -64,7 +64,7 @@ async def create_event(
 ) -> SecurityEventResponse:
     """Ingest a SecurityEvent emitted by the C++ IDS engine."""
     try:
-        event = await ingest_event(db, payload, actor=user.username)
+        event = await ingest_event(db, payload, actor=user.username, actor_role=user.role)
     except DuplicateEventError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

@@ -75,6 +75,9 @@ secrets. The existing canonical names are:
 
 `DATABASE_URL` is the async SQLAlchemy URL. Alembic derives its synchronous
 URL from the same setting; do not maintain a second migration database URL.
+Automatic dispatch matches the authenticated JWT subject and requires the
+identity's role to be `AGENT`; public analyst accounts cannot activate the
+allowlist by choosing the same username.
 With the template's empty `JWT_SECRET_KEY` and token values, the launcher
 generates a private random signing key plus distinct development-only engine,
 agent, and analyst JWTs under `.intriqo/state/service-tokens.env`. They are

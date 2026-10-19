@@ -42,6 +42,19 @@ class AgentTaskRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_investigation_by_event_id(self, event_id: str) -> AgentTask | None:
+        """Return the existing investigation task for one source event."""
+        result = await self._db.execute(
+            select(AgentTask)
+            .where(
+                AgentTask.task_type == "INVESTIGATION",
+                AgentTask.event_id == event_id,
+            )
+            .order_by(AgentTask.created_at)
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def update(self, task: AgentTask) -> AgentTask:
         await self._db.flush()
         await self._db.refresh(task)

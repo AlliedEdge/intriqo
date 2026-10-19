@@ -154,6 +154,14 @@ def trusted_engine_headers():
 
 
 @pytest.fixture
+def trusted_engine_analyst_headers():
+    token = create_access_token(
+        subject="ids-engine-local", role="ANALYST", extra={"user_id": "user-analyst-engine-name"}
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
 def other_agent_headers():
     token = create_access_token(
         subject="other_agent_service", role="AGENT", extra={"user_id": "user-agent-2"}

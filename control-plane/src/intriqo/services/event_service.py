@@ -46,8 +46,14 @@ async def ingest_event(
     db: AsyncSession,
     payload: SecurityEventCreate,
     actor: str = "system",
+    actor_role: str | None = None,
 ) -> SecurityEvent:
-    """Validate, deduplicate, persist, and audit a new SecurityEvent."""
+    """Validate, deduplicate, persist, and audit a new SecurityEvent.
+
+    Automatic investigation dispatch is restricted to an allowlisted AGENT
+    identity. Keeping the role separate from the actor name prevents a public
+    ANALYST account from activating dispatch by choosing the engine username.
+    """
     repo = EventRepository(db)
 
     if await repo.exists(payload.event_id):
@@ -90,6 +96,7 @@ async def ingest_event(
         if (
             settings.auto_create_investigation_tasks
             and event_type in DETERMINISTIC_EVENT_TYPES
+            and actor_role == "AGENT"
             and actor in settings.trusted_event_ingestion_actors
         ):
             await create_task(

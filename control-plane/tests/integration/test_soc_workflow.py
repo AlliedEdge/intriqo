@@ -6,6 +6,8 @@ import uuid
 
 import pytest
 
+from intriqo.config import get_settings
+
 
 def _event(event_type: str, timestamp: str, *, event_id: str | None = None) -> dict:
     return {
@@ -157,6 +159,81 @@ async def test_untrusted_agent_event_does_not_auto_create_task(client, agent_hea
     )
     assert tasks.status_code == 200
     assert tasks.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_matching_engine_subject_with_analyst_role_does_not_dispatch(
+    client, trusted_engine_analyst_headers
+):
+    event = _event("PORT_SCAN", "2026-10-01T13:55:00Z")
+    response = await client.post(
+        "/api/v1/events", json=event, headers=trusted_engine_analyst_headers
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["linked_incident_ids"]
+    assert response.json()["linked_task_ids"] == []
+
+
+@pytest.mark.asyncio
+async def test_trusted_dispatch_can_be_disabled(client, trusted_engine_headers, monkeypatch):
+    monkeypatch.setattr(get_settings(), "auto_create_investigation_tasks", False)
+    event = _event("SYN_FLOOD", "2026-10-01T13:57:00Z")
+
+    response = await client.post(
+        "/api/v1/events", json=event, headers=trusted_engine_headers
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["linked_incident_ids"]
+    assert response.json()["linked_task_ids"] == []
+
+
+@pytest.mark.asyncio
+async def test_manual_investigation_task_is_reused_by_automatic_idempotency_path(
+    client, agent_headers, analyst_headers
+):
+    event = _event("PORT_SCAN", "2026-10-01T13:59:00Z")
+    created_event = await client.post(
+        "/api/v1/events", json=event, headers=agent_headers
+    )
+    assert created_event.status_code == 201, created_event.text
+    incident_id = created_event.json()["linked_incident_ids"][0]
+
+    manual = await client.post(
+        "/api/v1/agent-tasks",
+        json={
+            "task_type": "INVESTIGATION",
+            "description": "Analyst-created investigation",
+            "priority": "HIGH",
+            "event_id": event["event_id"],
+            "incident_id": incident_id,
+            "idempotency_key": "analyst-specific-key",
+        },
+        headers=analyst_headers,
+    )
+    assert manual.status_code == 201, manual.text
+
+    automatic_retry = await client.post(
+        "/api/v1/agent-tasks",
+        json={
+            "task_type": "INVESTIGATION",
+            "description": "Automatic deterministic dispatch",
+            "priority": "HIGH",
+            "event_id": event["event_id"],
+            "incident_id": incident_id,
+            "idempotency_key": f"INVESTIGATION|event:{event['event_id']}",
+        },
+        headers=analyst_headers,
+    )
+    assert automatic_retry.status_code == 201, automatic_retry.text
+    assert automatic_retry.json()["task_id"] == manual.json()["task_id"]
+
+    tasks = await client.get(
+        f"/api/v1/agent-tasks?event_id={event['event_id']}", headers=analyst_headers
+    )
+    assert tasks.status_code == 200
+    assert tasks.json()["total"] == 1
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,7 @@ import secrets
 import uuid
 from datetime import datetime, timezone
 
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -320,6 +321,19 @@ async def create_task(
         )
 
     repo = AgentTaskRepository(db)
+    if payload.task_type == "INVESTIGATION" and payload.event_id:
+        # Automatic and analyst-created investigation tasks share one logical
+        # outcome per event even when a caller supplied a different
+        # Idempotency-Key. PostgreSQL's transaction advisory lock makes the
+        # read-then-create boundary atomic for concurrent API requests.
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": f"agent-task|INVESTIGATION|{payload.event_id}"},
+        )
+        existing = await repo.get_investigation_by_event_id(payload.event_id)
+        if existing is not None:
+            return existing
+
     durable_key = idempotency_key or payload.idempotency_key
     # Tasks tied to a source are naturally one logical outcome per task type;
     # callers without a source can opt into the same guarantee explicitly.
