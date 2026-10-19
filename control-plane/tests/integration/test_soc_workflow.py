@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
 
 from intriqo.config import get_settings
+from intriqo.services import event_service
 
 
 def _event(event_type: str, timestamp: str, *, event_id: str | None = None) -> dict:
@@ -234,6 +236,82 @@ async def test_manual_investigation_task_is_reused_by_automatic_idempotency_path
     )
     assert tasks.status_code == 200
     assert tasks.json()["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_differing_keys_create_one_investigation_task(
+    client, db, isolated_client_factory, agent_headers, analyst_headers
+):
+    event = _event("PORT_SCAN", "2026-10-01T13:59:30Z")
+    created_event = await client.post(
+        "/api/v1/events", json=event, headers=agent_headers
+    )
+    assert created_event.status_code == 201, created_event.text
+    incident_id = created_event.json()["linked_incident_ids"][0]
+    await db.commit()
+
+    client_a = await isolated_client_factory()
+    client_b = await isolated_client_factory()
+    payload = {
+        "task_type": "INVESTIGATION",
+        "description": "Concurrent investigation request",
+        "priority": "HIGH",
+        "event_id": event["event_id"],
+        "incident_id": incident_id,
+    }
+    responses = await asyncio.gather(
+        client_a.post(
+            "/api/v1/agent-tasks",
+            json={**payload, "idempotency_key": "concurrent-key-a"},
+            headers=analyst_headers,
+        ),
+        client_b.post(
+            "/api/v1/agent-tasks",
+            json={**payload, "idempotency_key": "concurrent-key-b"},
+            headers=analyst_headers,
+        ),
+    )
+
+    assert [response.status_code for response in responses] == [201, 201]
+    assert responses[0].json()["task_id"] == responses[1].json()["task_id"]
+
+    tasks = await client.get(
+        f"/api/v1/agent-tasks?event_id={event['event_id']}", headers=analyst_headers
+    )
+    assert tasks.status_code == 200
+    assert tasks.json()["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_automatic_dispatch_failure_rolls_back_event_and_incident(
+    isolated_client_factory, trusted_engine_headers, analyst_headers, monkeypatch
+):
+    async def fail_create_task(*args, **kwargs):
+        raise RuntimeError("simulated task persistence failure")
+
+    monkeypatch.setattr(event_service, "create_task", fail_create_task)
+    event = _event("PORT_SCAN", "2026-10-01T13:59:45Z")
+    request_client = await isolated_client_factory()
+
+    response = await request_client.post(
+        "/api/v1/events", json=event, headers=trusted_engine_headers
+    )
+
+    assert response.status_code == 500
+
+    observer = await isolated_client_factory()
+    event_read = await observer.get(
+        f"/api/v1/events/{event['event_id']}", headers=analyst_headers
+    )
+    assert event_read.status_code == 404
+    task_list = await observer.get(
+        f"/api/v1/agent-tasks?event_id={event['event_id']}", headers=analyst_headers
+    )
+    assert task_list.status_code == 200
+    assert task_list.json()["total"] == 0
+    incidents = await observer.get("/api/v1/incidents", headers=analyst_headers)
+    assert incidents.status_code == 200
+    assert incidents.json()["total"] == 0
 
 
 @pytest.mark.asyncio

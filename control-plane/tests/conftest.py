@@ -113,6 +113,38 @@ async def client(db):
         yield c
 
 
+@pytest_asyncio.fixture
+async def isolated_client_factory(db):
+    """Create independent HTTP clients for real concurrent DB requests."""
+    resources = []
+
+    async def make_client():
+        engine = create_async_engine(TEST_DB_URL, **_ENGINE_KWARGS)
+        factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        session = factory()
+        app = create_app()
+
+        async def override_get_db():
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+        app.dependency_overrides[get_db] = override_get_db
+        client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+        resources.append((client, session, engine))
+        return client
+
+    yield make_client
+
+    for client, session, engine in resources:
+        await client.aclose()
+        await session.close()
+        await engine.dispose()
+
+
 # ── Pre-made JWT tokens ───────────────────────────────────────────────────────
 @pytest.fixture
 def analyst_token():
