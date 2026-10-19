@@ -13,7 +13,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from intriqo_agents.contracts.security_event import SecurityEvent
-from intriqo_agents.control_plane.client import ControlPlaneClient
+from intriqo_agents.control_plane.client import (
+    ControlPlaneClient,
+    ControlPlaneError,
+    ControlPlaneNotFound,
+)
 from intriqo_agents.investigation.agent import InvestigationAgent
 from intriqo_agents.orchestrator.orchestrator import AgentOrchestrator
 from intriqo_agents.orchestrator.registry import AgentRegistry
@@ -72,11 +76,33 @@ def run_demo() -> int:
 def run_task(task_id: str) -> int:
     """Execute one persisted task; credentials are read from the environment."""
     setup_logging()
+    logger = logging.getLogger("intriqo.agents.runner")
     with ControlPlaneClient() as client:
+        if not _claim_task(client, task_id, logger):
+            return 1
         registry = AgentRegistry([InvestigationAgent()])
         result = AgentOrchestrator(registry, client).execute_task(task_id)
     print(json.dumps(result.to_dict(), indent=2))
     return 0 if result.status in {"SUCCESS", "INCONCLUSIVE"} else 1
+
+
+def _claim_task(client: ControlPlaneClient, task_id: str, logger: logging.Logger) -> bool:
+    """Claim a task and keep unclaimed work out of the executor."""
+    try:
+        client.claim_task(task_id)
+    except ControlPlaneNotFound as exc:
+        logger.info("Skipping task_id='%s': task was not found while claiming: %s", task_id, exc)
+        return False
+    except ControlPlaneError as exc:
+        if exc.status_code == 409:
+            logger.info("Skipping task_id='%s': claim conflict: %s", task_id, exc)
+        else:
+            logger.error("Could not claim task_id='%s': %s", task_id, exc)
+        return False
+    except Exception as exc:  # noqa: BLE001 - a failed claim must never execute unclaimed work
+        logger.error("Could not claim task_id='%s': %s", task_id, exc)
+        return False
+    return True
 
 
 def poll_once(client: ControlPlaneClient, orchestrator: AgentOrchestrator) -> int:
@@ -95,6 +121,8 @@ def poll_once(client: ControlPlaneClient, orchestrator: AgentOrchestrator) -> in
             logger.warning(
                 "Skipping persisted investigation task without task_id"
             )
+            continue
+        if not _claim_task(client, task_id, logger):
             continue
         try:
             result = orchestrator.execute_task(task_id)

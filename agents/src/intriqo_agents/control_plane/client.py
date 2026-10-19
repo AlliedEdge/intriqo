@@ -1,7 +1,8 @@
 """Small HTTP client for the agent-facing Control Plane API.
 
-This module deliberately exposes only evidence reads, task status updates, and
-finding submission.  It never opens a database connection or executes commands.
+This module deliberately exposes only evidence reads, task claiming/status
+updates, and finding submission.  It never opens a database connection or
+executes commands.
 """
 
 from __future__ import annotations
@@ -78,6 +79,10 @@ class ControlPlaneClient:
 
     def get_task(self, task_id: str) -> dict[str, Any]:
         return self._request("GET", f"/api/v1/agent-tasks/{task_id}")
+
+    def claim_task(self, task_id: str) -> dict[str, Any]:
+        """Atomically claim one persisted task for this authenticated agent."""
+        return self._request("POST", f"/api/v1/agent-tasks/{task_id}/claim")
 
     def list_tasks(
         self,

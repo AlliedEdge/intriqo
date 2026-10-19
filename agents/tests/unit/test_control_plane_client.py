@@ -40,6 +40,21 @@ def test_client_lists_investigation_tasks() -> None:
         ]
 
 
+def test_client_claims_task_with_post_and_returns_response() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/v1/agent-tasks/task-1/claim"
+        assert request.headers["authorization"] == "Bearer secret"
+        assert request.content == b""
+        return httpx.Response(200, json={"task_id": "task-1", "status": "IN_PROGRESS"})
+
+    with ControlPlaneClient("http://control", "secret", transport=httpx.MockTransport(handler)) as client:
+        assert client.claim_task("task-1") == {
+            "task_id": "task-1",
+            "status": "IN_PROGRESS",
+        }
+
+
 def test_remote_port_scan_lifecycle_and_idempotent_replay() -> None:
     task = {"task_id": "task-1", "task_type": "INVESTIGATION", "description": "scan",
             "priority": "HIGH", "status": "PENDING", "event_id": "event-1",
