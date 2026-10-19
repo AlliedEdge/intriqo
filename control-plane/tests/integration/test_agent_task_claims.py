@@ -273,6 +273,63 @@ async def test_expired_claim_token_cannot_renew_and_fresh_claim_gets_new_token(
 
 
 @pytest.mark.asyncio
+async def test_same_identity_reclaim_rejects_old_token_and_accepts_new_owner(
+    client, db, analyst_headers, agent_headers
+):
+    """A restarted worker sharing the JWT cannot finish an old lease."""
+    task_id = await _create_task(client, analyst_headers)
+    token_a = await _claim(client, task_id, agent_headers)
+
+    await db.execute(
+        update(AgentTask)
+        .where(AgentTask.task_id == task_id)
+        .values(claim_expires_at=datetime.now(timezone.utc) - timedelta(seconds=1))
+    )
+    await db.commit()
+
+    token_b = await _claim(client, task_id, agent_headers)
+    assert token_b != token_a
+
+    stale_status = await client.patch(
+        f"/api/v1/agent-tasks/{task_id}",
+        json={"status": "COMPLETED"},
+        headers={**agent_headers, "X-Claim-Token": token_a},
+    )
+    assert stale_status.status_code == 409
+    assert stale_status.json()["error"]["code"] == "TASK_CLAIM_TOKEN_INVALID"
+
+    stale_finding = await _finding(
+        client,
+        task_id,
+        {**agent_headers, "X-Claim-Token": token_a},
+        agent_name="stale-worker",
+    )
+    assert stale_finding.status_code == 409
+    assert stale_finding.json()["error"]["code"] == "TASK_CLAIM_TOKEN_INVALID"
+
+    valid_status = await client.patch(
+        f"/api/v1/agent-tasks/{task_id}",
+        json={"status": "IN_PROGRESS"},
+        headers={**agent_headers, "X-Claim-Token": token_b},
+    )
+    assert valid_status.status_code == 200, valid_status.text
+
+    valid_finding = await _finding(
+        client,
+        task_id,
+        {**agent_headers, "X-Claim-Token": token_b},
+        agent_name="current-worker",
+    )
+    assert valid_finding.status_code == 201, valid_finding.text
+    assert valid_finding.json()["submitted_by"] == "agent_service"
+
+    final_task = await client.get(f"/api/v1/agent-tasks/{task_id}", headers=analyst_headers)
+    assert final_task.status_code == 200
+    assert final_task.json()["status"] == "COMPLETED"
+    assert final_task.json()["claimed_by"] is None
+
+
+@pytest.mark.asyncio
 async def test_reclaimed_lease_rejects_stale_status_and_finding_token(
     client, db, analyst_headers, agent_headers, other_agent_headers
 ):
