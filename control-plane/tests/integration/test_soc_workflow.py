@@ -130,6 +130,7 @@ async def test_duplicate_workflow_outcomes_and_relationships_are_traceable(
         f"/api/v1/agent-tasks/{task_id}/claim", headers=agent_headers
     )
     assert claimed.status_code == 200, claimed.text
+    claim_token = claimed.json()["claim_token"]
 
     finding_payload = {
         "task_id": task_id,
@@ -139,7 +140,9 @@ async def test_duplicate_workflow_outcomes_and_relationships_are_traceable(
         "evidence": [{"type": "syn_ratio", "syn_packets": 100, "ack_packets": 2}],
     }
     finding = await client.post(
-        "/api/v1/findings", json=finding_payload, headers=agent_headers
+        "/api/v1/findings",
+        json=finding_payload,
+        headers={**agent_headers, "X-Claim-Token": claim_token},
     )
     retry_finding = await client.post(
         "/api/v1/findings", json=finding_payload, headers=agent_headers

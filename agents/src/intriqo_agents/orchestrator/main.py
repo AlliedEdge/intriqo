@@ -78,31 +78,43 @@ def run_task(task_id: str) -> int:
     setup_logging()
     logger = logging.getLogger("intriqo.agents.runner")
     with ControlPlaneClient() as client:
-        if not _claim_task(client, task_id, logger):
+        claim = _claim_task(client, task_id, logger)
+        if claim is None:
             return 1
         registry = AgentRegistry([InvestigationAgent()])
-        result = AgentOrchestrator(registry, client).execute_task(task_id)
+        result = AgentOrchestrator(registry, client).execute_task(
+            task_id, claim["claim_token"],
+        )
     print(json.dumps(result.to_dict(), indent=2))
     return 0 if result.status in {"SUCCESS", "INCONCLUSIVE"} else 1
 
 
-def _claim_task(client: ControlPlaneClient, task_id: str, logger: logging.Logger) -> bool:
-    """Claim a task and keep unclaimed work out of the executor."""
+def _claim_task(
+    client: ControlPlaneClient,
+    task_id: str,
+    logger: logging.Logger,
+) -> dict[str, Any] | None:
+    """Claim a task and return its lease proof without logging the token."""
     try:
-        client.claim_task(task_id)
+        claim = client.claim_task(task_id)
     except ControlPlaneNotFound as exc:
         logger.info("Skipping task_id='%s': task was not found while claiming: %s", task_id, exc)
-        return False
+        return None
     except ControlPlaneError as exc:
         if exc.status_code == 409:
             logger.info("Skipping task_id='%s': claim conflict: %s", task_id, exc)
         else:
             logger.error("Could not claim task_id='%s': %s", task_id, exc)
-        return False
+        return None
     except Exception as exc:  # noqa: BLE001 - a failed claim must never execute unclaimed work
         logger.error("Could not claim task_id='%s': %s", task_id, exc)
-        return False
-    return True
+        return None
+
+    claim_token = claim.get("claim_token")
+    if not isinstance(claim_token, str) or not claim_token.strip():
+        logger.error("Could not claim task_id='%s': response did not include a claim token", task_id)
+        return None
+    return claim
 
 
 def poll_once(client: ControlPlaneClient, orchestrator: AgentOrchestrator) -> int:
@@ -122,10 +134,11 @@ def poll_once(client: ControlPlaneClient, orchestrator: AgentOrchestrator) -> in
                 "Skipping persisted investigation task without task_id"
             )
             continue
-        if not _claim_task(client, task_id, logger):
+        claim = _claim_task(client, task_id, logger)
+        if claim is None:
             continue
         try:
-            result = orchestrator.execute_task(task_id)
+            result = orchestrator.execute_task(task_id, claim["claim_token"])
         except Exception as exc:  # noqa: BLE001 - one malformed task must not starve the queue
             logger.error("Task execution failed for task_id='%s': %s", task_id, exc)
             continue

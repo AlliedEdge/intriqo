@@ -1,7 +1,9 @@
 """Audit service — single point for writing audit records.
 
 All important control-plane actions go through this service.
-Failures to write audit records are logged but do NOT abort the primary operation.
+Normal audit failures are logged but do NOT abort the primary operation.
+Security-sensitive override mutations use ``record_required`` so an audit
+failure aborts their surrounding transaction.
 """
 
 from __future__ import annotations
@@ -73,3 +75,42 @@ async def record(
             "Failed to write audit record: actor=%s action=%s resource=%s/%s",
             actor, action, resource_type, resource_id,
         )
+
+
+async def record_required(
+    db: AsyncSession,
+    *,
+    actor: str,
+    action: str,
+    resource_type: str,
+    resource_id: str,
+    outcome: str = "SUCCESS",
+    detail: str | None = None,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    """Append an audit record and propagate failures to the caller.
+
+    Callers must invoke this inside the same transaction/savepoint as the
+    security-sensitive mutation.  The request/session owner then rolls back
+    both the mutation and this required audit write on failure.
+    """
+    try:
+        repo = AuditLogRepository(db)
+        log = AuditLog(
+            id=str(uuid.uuid4()),
+            actor=actor,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            outcome=outcome,
+            detail=detail,
+            extra=extra or {},
+            created_at=datetime.now(timezone.utc),
+        )
+        await repo.create(log)
+    except Exception:
+        logger.exception(
+            "Required audit write failed: actor=%s action=%s resource=%s/%s",
+            actor, action, resource_type, resource_id,
+        )
+        raise

@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import logging
+import math
+import os
+import threading
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Any
 
 from intriqo_agents.contracts.security_event import SecurityEvent
 from intriqo_agents.control_plane.client import ControlPlaneClient, ControlPlaneError
@@ -29,6 +33,77 @@ from intriqo_agents.tools.mock_tools import (
 logger = logging.getLogger("intriqo.agents.investigation")
 
 
+DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 5.0
+
+
+class _LeaseHeartbeat:
+    """Bounded lease-renewal worker for one remote task execution."""
+
+    def __init__(
+        self,
+        client: ControlPlaneClient,
+        task_id: str,
+        claim_token: str,
+        interval_seconds: float,
+    ) -> None:
+        self._client = client
+        self._task_id = task_id
+        self._claim_token = claim_token
+        self._interval_seconds = max(interval_seconds, 0.01)
+        self._stop = threading.Event()
+        self._unsafe = threading.Event()
+        self._thread = threading.Thread(
+            target=self._run,
+            name=f"intriqo-lease-{task_id}",
+            daemon=True,
+        )
+
+    @property
+    def unsafe(self) -> bool:
+        return self._unsafe.is_set()
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop_and_join(self) -> None:
+        self._stop.set()
+        self._thread.join()
+
+    def _run(self) -> None:
+        while not self._stop.wait(self._interval_seconds):
+            try:
+                renew = getattr(self._client, "renew_task_lease", None)
+                if not callable(renew):
+                    renew = getattr(self._client, "renew_task", None)
+                if not callable(renew):
+                    raise RuntimeError("Control Plane client has no lease renewal method")
+                renewal = renew(self._task_id, self._claim_token)
+                if isinstance(renewal, Mapping):
+                    returned_token = renewal.get("claim_token")
+                    if returned_token is not None and returned_token != self._claim_token:
+                        raise RuntimeError("Control Plane returned a different lease token")
+                    returned_status = renewal.get("status")
+                    if returned_status is not None and returned_status != "IN_PROGRESS":
+                        raise RuntimeError("Control Plane did not keep the task in progress")
+            except Exception as exc:  # noqa: BLE001 - ownership loss is fail-closed
+                self._unsafe.set()
+                # Never include request headers or token-bearing exception data
+                # in logs.  The task ID is safe operational context.
+                logger.error(
+                    "Lease renewal failed for task_id='%s' (%s)",
+                    self._task_id,
+                    type(exc).__name__,
+                )
+                return
+
+
+class _LeaseOwnershipLost(RuntimeError):
+    """The worker can no longer prove ownership of the persisted task."""
+
+    def __init__(self) -> None:
+        super().__init__("Task lease renewal failed; execution is unsafe")
+
+
 class InvestigationAgent(Agent):
     """Specialized cybersecurity agent focused on incident investigation and evidence collection.
 
@@ -40,7 +115,13 @@ class InvestigationAgent(Agent):
     no shell execution, no unrestricted network calls.
     """
 
-    def __init__(self, tools: Sequence[Tool] | Mapping[str, Tool] | None = None) -> None:
+    def __init__(
+        self,
+        tools: Sequence[Tool] | Mapping[str, Tool] | None = None,
+        *,
+        heartbeat_interval: float | None = None,
+    ) -> None:
+        self._heartbeat_interval = heartbeat_interval
         if tools is None:
             default_tools: list[Tool] = [
                 NetworkFlowQueryTool(),
@@ -53,10 +134,30 @@ class InvestigationAgent(Agent):
         else:
             self._tools = {t.name: t for t in tools}
 
-    def execute_task(self, task_id: str, client: ControlPlaneClient | None = None) -> AgentResult:
-        """Run one persisted task through the Control Plane, safely and idempotently."""
+    def execute_task(
+        self,
+        task_id: str,
+        client: ControlPlaneClient | None = None,
+        claim_token: str | None = None,
+        heartbeat_interval: float | None = None,
+    ) -> AgentResult:
+        """Run one claimed persisted task through the Control Plane.
+
+        A claim token is mandatory even when a caller supplies a client.  This
+        keeps direct persisted-task execution on the same lease-enforced path
+        as the poller and one-shot runner.
+        """
+        if not isinstance(claim_token, str) or not claim_token.strip():
+            return AgentResult.failure(
+                task_id,
+                self.name,
+                "A valid claim token is required for persisted task execution",
+            )
+
         owned_client = client is None
         cp = client or ControlPlaneClient()
+        heartbeat: _LeaseHeartbeat | None = None
+        lease_unsafe = False
         try:
             task_data = GetTaskTool(cp).execute({"task_id": task_id})
             if not task_data.success:
@@ -67,7 +168,14 @@ class InvestigationAgent(Agent):
                 return AgentResult.from_dict({
                     **existing[0], "metadata": {"idempotent_replay": True},
                 })
-            await_status = UpdateTaskTool(cp).execute({"task_id": task_id, "status": "IN_PROGRESS"})
+
+            interval = self._resolve_heartbeat_interval(task_payload, heartbeat_interval)
+            heartbeat = _LeaseHeartbeat(cp, task_id, claim_token, interval)
+            heartbeat.start()
+
+            await_status = UpdateTaskTool(cp, claim_token).execute(
+                {"task_id": task_id, "status": "IN_PROGRESS"}
+            )
             if not await_status.success:
                 raise ControlPlaneError(await_status.error or "task start failed")
 
@@ -96,6 +204,14 @@ class InvestigationAgent(Agent):
             )
             local_task = AgentTask.from_dict({**task_payload, "security_event": local_event.to_dict()})
             result = self._investigate_control_plane_event(local_task)
+            if heartbeat.unsafe:
+                raise _LeaseOwnershipLost()
+            # The heartbeat protects the long-running investigation.  Stop it
+            # before the terminal write so a renewal racing with completion
+            # cannot turn a finished task into an unsafe replay.
+            heartbeat.stop_and_join()
+            if heartbeat.unsafe:
+                raise _LeaseOwnershipLost()
             finding = {"task_id": task_id, "agent_name": self.name, "status": result.status,
                        "confidence": result.confidence, "findings": list(result.findings),
                        "evidence": list(result.evidence), "summary": result.summary,
@@ -111,25 +227,71 @@ class InvestigationAgent(Agent):
                            ),
                            "detector": event.get("details", {}).get("detector"),
                        }}
-            submitted = SubmitFindingTool(cp).execute({"finding": finding})
+            submitted = SubmitFindingTool(cp, claim_token).execute({"finding": finding})
             if not submitted.success:
                 raise ControlPlaneError(submitted.error or "finding submission failed")
-            final_status = "FAILED" if result.status == "FAILED" else "COMPLETED"
-            final_update = UpdateTaskTool(cp).execute(
-                {"task_id": task_id, "status": final_status}
-            )
-            if not final_update.success:
-                raise ControlPlaneError(final_update.error or "task completion failed")
+            # The Control Plane finalizes the task transactionally with finding
+            # submission.  No second completion write can be made safely after
+            # that endpoint clears the claim token.
             return result
+        except _LeaseOwnershipLost as exc:
+            return AgentResult.failure(
+                task_id,
+                self.name,
+                str(exc),
+                {"lease_unsafe": True},
+            )
         except Exception as exc:  # noqa: BLE001 - failure is persisted, never silently swallowed
+            lease_unsafe = heartbeat.unsafe if heartbeat is not None else False
             try:
-                UpdateTaskTool(cp).execute({"task_id": task_id, "status": "FAILED"})
+                if not lease_unsafe:
+                    UpdateTaskTool(cp, claim_token).execute(
+                        {"task_id": task_id, "status": "FAILED"}
+                    )
             except Exception:
                 logger.exception("Could not mark task %s FAILED", task_id)
-            return AgentResult.failure(task_id, self.name, str(exc), {"exception_type": type(exc).__name__})
+            details: dict[str, Any] = {"exception_type": type(exc).__name__}
+            if lease_unsafe:
+                details["lease_unsafe"] = True
+            return AgentResult.failure(task_id, self.name, str(exc), details)
         finally:
+            if heartbeat is not None:
+                heartbeat.stop_and_join()
             if owned_client:
                 cp.close()
+
+    def _resolve_heartbeat_interval(
+        self,
+        task_payload: Mapping[str, Any],
+        requested_interval: float | None,
+    ) -> float:
+        configured = requested_interval
+        if configured is None:
+            configured = self._heartbeat_interval
+        if configured is None:
+            raw_configured = os.environ.get("INTRIQO_AGENT_HEARTBEAT_SECONDS")
+            if raw_configured:
+                try:
+                    configured = float(raw_configured)
+                except ValueError:
+                    configured = None
+        remaining: float | None = None
+        raw_expiry = task_payload.get("claim_expires_at")
+        if isinstance(raw_expiry, str):
+            try:
+                expiry = datetime.fromisoformat(raw_expiry.replace("Z", "+00:00"))
+                if expiry.tzinfo is None:
+                    expiry = expiry.replace(tzinfo=timezone.utc)
+                remaining = (expiry - datetime.now(timezone.utc)).total_seconds()
+            except ValueError:
+                remaining = None
+        if configured is not None and math.isfinite(configured) and configured > 0:
+            if remaining is not None and remaining > 0:
+                return max(min(configured, remaining / 3.0), 0.01)
+            return configured
+        if remaining is not None and remaining > 0:
+            return max(min(remaining / 3.0, DEFAULT_HEARTBEAT_INTERVAL_SECONDS), 0.01)
+        return DEFAULT_HEARTBEAT_INTERVAL_SECONDS
 
     def _investigate_control_plane_event(self, task: AgentTask) -> AgentResult:
         """Deterministically analyze detector details returned by the Control Plane."""

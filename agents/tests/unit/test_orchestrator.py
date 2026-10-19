@@ -57,6 +57,32 @@ class TestAgentOrchestrator(unittest.TestCase):
         self.assertGreaterEqual(result.confidence, 0.90)
         self.assertIn("Port scan confirmed", result.summary or "")
 
+    def test_persisted_execution_requires_claim_token(self) -> None:
+        result = AgentOrchestrator(self.registry, object()).execute_task("task-remote")
+        self.assertEqual(result.status, "FAILED")
+        self.assertIn("claim token", result.error["message"])
+
+    def test_persisted_execution_forwards_claim_token_to_agent(self) -> None:
+        calls = []
+
+        class Client:
+            def get_task(self, task_id):
+                return {"task_id": task_id, "task_type": "INVESTIGATION"}
+
+        class RemoteInvestigationAgent(InvestigationAgent):
+            def execute_task(self, task_id, client, claim_token):
+                calls.append((task_id, client, claim_token))
+                return AgentResult.success(task_id, self.name, [], [], 1.0)
+
+        agent = RemoteInvestigationAgent()
+        client = Client()
+        result = AgentOrchestrator(AgentRegistry([agent]), client).execute_task(
+            "task-remote", "lease-token"
+        )
+
+        self.assertEqual(result.status, "SUCCESS")
+        self.assertEqual(calls, [("task-remote", client, "lease-token")])
+
     def test_no_agent_available_returns_failure(self) -> None:
         result = AgentOrchestrator(AgentRegistry()).process_event(MOCK_PORT_SCAN_EVENT)
         self.assertEqual(result.status, "FAILED")

@@ -47,12 +47,14 @@ async def _create_full_chain(client, agent_headers, analyst_headers):
         f"/api/v1/agent-tasks/{task_id}/claim", headers=agent_headers
     )
     assert claim_resp.status_code == 200, claim_resp.text
-    return event_id, incident_id, task_id
+    return event_id, incident_id, task_id, claim_resp.json()["claim_token"]
 
 
 @pytest.mark.asyncio
 async def test_submit_finding(client, agent_headers, analyst_headers):
-    _, _, task_id = await _create_full_chain(client, agent_headers, analyst_headers)
+    _, _, task_id, claim_token = await _create_full_chain(
+        client, agent_headers, analyst_headers
+    )
 
     resp = await client.post(
         "/api/v1/findings",
@@ -65,7 +67,7 @@ async def test_submit_finding(client, agent_headers, analyst_headers):
             "evidence": [{"type": "flow_count", "count": 512}],
             "summary": "Port scan confirmed.",
         },
-        headers=agent_headers,
+        headers={**agent_headers, "X-Claim-Token": claim_token},
     )
     assert resp.status_code == 201, resp.text
     body = resp.json()
@@ -77,7 +79,9 @@ async def test_submit_finding(client, agent_headers, analyst_headers):
 
 @pytest.mark.asyncio
 async def test_submit_finding_marks_task_completed(client, agent_headers, analyst_headers):
-    _, _, task_id = await _create_full_chain(client, agent_headers, analyst_headers)
+    _, _, task_id, claim_token = await _create_full_chain(
+        client, agent_headers, analyst_headers
+    )
 
     await client.post(
         "/api/v1/findings",
@@ -87,7 +91,7 @@ async def test_submit_finding_marks_task_completed(client, agent_headers, analys
             "status": "SUCCESS",
             "confidence": 0.9,
         },
-        headers=agent_headers,
+        headers={**agent_headers, "X-Claim-Token": claim_token},
     )
 
     task_resp = await client.get(f"/api/v1/agent-tasks/{task_id}", headers=analyst_headers)
@@ -98,7 +102,9 @@ async def test_submit_finding_marks_task_completed(client, agent_headers, analys
 async def test_failed_finding_marks_task_failed_without_resolving_incident(
     client, agent_headers, analyst_headers
 ):
-    _, incident_id, task_id = await _create_full_chain(client, agent_headers, analyst_headers)
+    _, incident_id, task_id, claim_token = await _create_full_chain(
+        client, agent_headers, analyst_headers
+    )
 
     response = await client.post(
         "/api/v1/findings",
@@ -109,7 +115,7 @@ async def test_failed_finding_marks_task_failed_without_resolving_incident(
             "confidence": 0.0,
             "error": {"message": "controlled tool failure"},
         },
-        headers=agent_headers,
+        headers={**agent_headers, "X-Claim-Token": claim_token},
     )
     assert response.status_code == 201, response.text
     task = await client.get(f"/api/v1/agent-tasks/{task_id}", headers=analyst_headers)
@@ -136,7 +142,9 @@ async def test_submit_finding_unknown_task(client, agent_headers):
 
 @pytest.mark.asyncio
 async def test_get_finding(client, agent_headers, analyst_headers):
-    _, _, task_id = await _create_full_chain(client, agent_headers, analyst_headers)
+    _, _, task_id, claim_token = await _create_full_chain(
+        client, agent_headers, analyst_headers
+    )
 
     post_resp = await client.post(
         "/api/v1/findings",
@@ -146,7 +154,7 @@ async def test_get_finding(client, agent_headers, analyst_headers):
             "status": "INCONCLUSIVE",
             "confidence": 0.5,
         },
-        headers=agent_headers,
+        headers={**agent_headers, "X-Claim-Token": claim_token},
     )
     finding_id = post_resp.json()["finding_id"]
 
@@ -213,6 +221,11 @@ async def test_end_to_end_chain(client, agent_headers, analyst_headers):
     )
     assert task_resp.status_code == 201
     task_id = task_resp.json()["task_id"]
+    claim_resp = await client.post(
+        f"/api/v1/agent-tasks/{task_id}/claim", headers=agent_headers
+    )
+    assert claim_resp.status_code == 200, claim_resp.text
+    claim_token = claim_resp.json()["claim_token"]
 
     # 5. Submit a Finding for that task
     finding_resp = await client.post(
@@ -233,7 +246,7 @@ async def test_end_to_end_chain(client, agent_headers, analyst_headers):
             "summary": "Port scan confirmed with high confidence.",
             "finding_metadata": {"tool_used": "query_network_flows"},
         },
-        headers=agent_headers,
+        headers={**agent_headers, "X-Claim-Token": claim_token},
     )
     assert finding_resp.status_code == 201
     finding_id = finding_resp.json()["finding_id"]

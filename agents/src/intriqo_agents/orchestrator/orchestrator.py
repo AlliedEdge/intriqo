@@ -34,17 +34,38 @@ class AgentOrchestrator:
         self.registry = registry
         self.client = client
 
-    def execute_task(self, task_id: str) -> AgentResult:
-        """Dispatch one persisted Control Plane task to the registered agent."""
-        task_payload = self.client.get_task(task_id) if self.client else None
+    def execute_task(self, task_id: str, claim_token: str | None = None) -> AgentResult:
+        """Dispatch one claimed persisted Control Plane task.
+
+        Persisted tasks are never executed through this method without the
+        token returned by the claim endpoint.  The token is handed to the
+        specialized agent, which attaches it to every lease-bound write.
+        """
+        if self.client is None:
+            return AgentResult.failure(
+                task_id,
+                "orchestrator",
+                "A Control Plane client and claim token are required for persisted tasks",
+            )
+        if not isinstance(claim_token, str) or not claim_token.strip():
+            return AgentResult.failure(
+                task_id,
+                "orchestrator",
+                "A valid claim token is required for persisted task execution",
+            )
+
+        task_payload = self.client.get_task(task_id)
         if task_payload is not None and task_payload.get("task_type") != "INVESTIGATION":
             return AgentResult.failure(task_id, "orchestrator", "Unsupported task type", {"task_type": task_payload.get("task_type")})
         agent = self.registry.find_agent_by_capability("investigation")
         execute_task = getattr(agent, "execute_task", None) if agent is not None else None
         if not callable(execute_task):
             return AgentResult.failure(task_id, "orchestrator", "No remote investigation agent available")
-        runner = cast(Callable[[str, ControlPlaneClient | None], AgentResult], execute_task)
-        return runner(task_id, self.client)
+        runner = cast(
+            Callable[[str, ControlPlaneClient | None, str], AgentResult],
+            execute_task,
+        )
+        return runner(task_id, self.client, claim_token)
 
     def create_task(self, event: SecurityEvent, task_id: str | None = None) -> AgentTask:
         """Derive an AgentTask from a SecurityEvent."""

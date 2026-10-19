@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from intriqo.auth.dependencies import AgentUser
@@ -16,6 +16,7 @@ from intriqo.services.agent_task_service import (
     AgentTaskNotFoundError,
     FindingConflictError,
     TaskClaimExpiredError,
+    TaskClaimTokenError,
     TaskNotOwnedError,
     TaskOverrideRequiredError,
     submit_finding,
@@ -52,6 +53,7 @@ async def submit(
     user: AgentUser,
     db: AsyncSession = Depends(get_db),
     override: bool = Query(False),
+    claim_token: Annotated[str | None, Header(alias="X-Claim-Token")] = None,
 ) -> FindingResponse:
     """Submit an agent result (Finding) for a task."""
     try:
@@ -61,6 +63,7 @@ async def submit(
             actor=user.username,
             actor_role=user.role,
             override=override,
+            claim_token=claim_token,
         )
     except AgentTaskNotFoundError as e:
         raise HTTPException(
@@ -76,6 +79,11 @@ async def submit(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"error": {"code": "TASK_NOT_OWNED", "message": str(e)}},
+        )
+    except TaskClaimTokenError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": {"code": "TASK_CLAIM_TOKEN_INVALID", "message": str(e)}},
         )
     except TaskOverrideRequiredError as e:
         raise HTTPException(

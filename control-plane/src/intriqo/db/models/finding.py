@@ -91,6 +91,17 @@ class Finding(Base):
 
     __table_args__ = (
         UniqueConstraint("task_id", "agent_name", name="uq_findings_task_agent"),
+        # Authenticated submitters may only produce one logical finding per
+        # task.  Legacy rows have submitted_by=NULL and are intentionally
+        # excluded: their agent_name is a label, never an authorization
+        # identity, and must not block a legitimate authenticated retry.
+        Index(
+            "uq_findings_task_submitted_by",
+            "task_id",
+            "submitted_by",
+            unique=True,
+            postgresql_where=submitted_by.is_not(None),
+        ),
         Index("ix_findings_status_confidence", "status", "confidence"),
         Index("ix_findings_created_at",        "created_at"),
     )

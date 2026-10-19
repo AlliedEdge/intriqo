@@ -24,7 +24,7 @@ class _Client:
     def claim_task(self, task_id):
         self.calls.append(("claim", task_id))
         self.claimed_task_ids.append(task_id)
-        return {"task_id": task_id, "status": "IN_PROGRESS"}
+        return {"task_id": task_id, "status": "IN_PROGRESS", "claim_token": f"token-{task_id}"}
 
 
 class _Orchestrator:
@@ -32,8 +32,8 @@ class _Orchestrator:
         self.calls = calls if calls is not None else []
         self.task_ids = []
 
-    def execute_task(self, task_id):
-        self.calls.append(("execute", task_id))
+    def execute_task(self, task_id, claim_token):
+        self.calls.append(("execute", task_id, claim_token))
         self.task_ids.append(task_id)
         return type("Result", (), {"status": "SUCCESS"})()
 
@@ -56,9 +56,9 @@ def test_poll_once_processes_only_recoverable_investigations():
     assert orchestrator.task_ids == ["pending", "in-progress"]
     assert calls == [
         ("claim", "pending"),
-        ("execute", "pending"),
+        ("execute", "pending", "token-pending"),
         ("claim", "in-progress"),
-        ("execute", "in-progress"),
+        ("execute", "in-progress", "token-in-progress"),
     ]
 
 
@@ -110,6 +110,21 @@ def test_poll_once_does_not_execute_after_claim_not_found():
     assert orchestrator.task_ids == []
 
 
+def test_poll_once_does_not_execute_without_server_claim_token():
+    class MissingTokenClient(_Client):
+        def claim_task(self, task_id):
+            super().claim_task(task_id)
+            return {"task_id": task_id, "status": "IN_PROGRESS"}
+
+    client = MissingTokenClient([
+        {"task_id": "unproven", "task_type": "INVESTIGATION", "status": "PENDING"},
+    ])
+    orchestrator = _Orchestrator()
+
+    assert entrypoint.poll_once(client, orchestrator) == 0
+    assert orchestrator.task_ids == []
+
+
 def test_main_dispatches_opt_in_polling(monkeypatch):
     monkeypatch.setattr(entrypoint, "run_polling", lambda interval: interval)
 
@@ -128,7 +143,7 @@ def test_run_task_claims_before_execute(monkeypatch, capsys):
 
         def claim_task(self, task_id):
             calls.append(("claim", task_id))
-            return {"task_id": task_id, "status": "IN_PROGRESS"}
+            return {"task_id": task_id, "status": "IN_PROGRESS", "claim_token": "one-shot-token"}
 
     class Result:
         status = "SUCCESS"
@@ -140,8 +155,8 @@ def test_run_task_claims_before_execute(monkeypatch, capsys):
         def __init__(self, _registry, _client):
             pass
 
-        def execute_task(self, task_id):
-            calls.append(("execute", task_id))
+        def execute_task(self, task_id, claim_token):
+            calls.append(("execute", task_id, claim_token))
             return Result()
 
     monkeypatch.setattr(entrypoint, "ControlPlaneClient", ContextClient)
@@ -150,7 +165,7 @@ def test_run_task_claims_before_execute(monkeypatch, capsys):
     monkeypatch.setattr(entrypoint, "AgentOrchestrator", FakeOrchestrator)
 
     assert entrypoint.run_task("one-shot") == 0
-    assert calls == [("claim", "one-shot"), ("execute", "one-shot")]
+    assert calls == [("claim", "one-shot"), ("execute", "one-shot", "one-shot-token")]
     assert '"status": "SUCCESS"' in capsys.readouterr().out
 
 

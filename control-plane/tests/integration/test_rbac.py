@@ -208,10 +208,11 @@ class TestAgentTasksAuthorization:
             f"/api/v1/agent-tasks/{task_id}/claim", headers=agent_headers
         )
         assert claim_resp.status_code == 200
+        claim_token = claim_resp.json()["claim_token"]
         resp = await client.patch(
             f"/api/v1/agent-tasks/{task_id}",
             json={"status": "IN_PROGRESS"},
-            headers=agent_headers,
+            headers={**agent_headers, "X-Claim-Token": claim_token},
         )
         assert resp.status_code == 200
 
@@ -238,6 +239,7 @@ class TestFindingsAuthorization:
             f"/api/v1/agent-tasks/{task_id}/claim", headers=agent_headers
         )
         assert claim_resp.status_code == 200
+        claim_token = claim_resp.json()["claim_token"]
 
         finding_payload = {
             "task_id": task_id,
@@ -248,7 +250,11 @@ class TestFindingsAuthorization:
             "findings": ["Finding 1"],
             "evidence": [],
         }
-        resp = await client.post("/api/v1/findings", json=finding_payload, headers=agent_headers)
+        resp = await client.post(
+            "/api/v1/findings",
+            json=finding_payload,
+            headers={**agent_headers, "X-Claim-Token": claim_token},
+        )
         assert resp.status_code == 201
 
     @pytest.mark.asyncio

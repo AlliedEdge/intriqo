@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import func, or_, select, text, update
+from sqlalchemy import and_, case, false, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from intriqo.db.models.agent_task import AgentTask
@@ -52,15 +52,27 @@ class AgentTaskRepository:
         task_id: str,
         identity: str,
         lease_seconds: int,
+        presented_claim_token: str | None,
+        new_claim_token: str,
     ) -> AgentTask | None:
         """Atomically claim an available task and return the updated task.
 
         The conditional UPDATE is the concurrency boundary: two agents may
-        race, but only the winner can update an unclaimed/expired task.  The
-        transaction is left to the request dependency to commit after this
-        short operation; no agent work is performed while it is open.
+        race, but only the winner can update an unclaimed/expired task.  An
+        unexpired same-identity renewal additionally needs the current token;
+        the transaction is left to the request dependency to commit after
+        this short operation, with no agent work performed while it is open.
         """
         lease_interval = text(f"INTERVAL '{lease_seconds} seconds'")
+        same_identity_renewal = (
+            and_(
+                AgentTask.claimed_by == identity,
+                AgentTask.claim_expires_at > func.now(),
+                AgentTask.claim_token == presented_claim_token,
+            )
+            if presented_claim_token is not None
+            else false()
+        )
         statement = (
             update(AgentTask)
             .where(
@@ -69,12 +81,18 @@ class AgentTaskRepository:
                 or_(
                     AgentTask.claimed_by.is_(None),
                     AgentTask.claim_expires_at <= func.now(),
-                    AgentTask.claimed_by == identity,
+                    same_identity_renewal,
                 ),
             )
             .values(
                 claimed_by=identity,
                 claim_expires_at=func.now() + lease_interval,
+                # A renewal extends the same claim and keeps its proof token;
+                # an initial claim/reclaim receives the freshly generated one.
+                claim_token=case(
+                    (same_identity_renewal, AgentTask.claim_token),
+                    else_=new_claim_token,
+                ),
                 status="IN_PROGRESS",
                 updated_at=func.now(),
             )

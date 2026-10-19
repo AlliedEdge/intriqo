@@ -44,6 +44,10 @@ class AgentTask(Base):
     claim_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+    # Server-generated proof of possession for the current lease.  This is
+    # deliberately nullable so tasks created before claim-token support remain
+    # readable and can be reclaimed by the first post-migration claimant.
+    claim_token: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     # ── Foreign keys ──────────────────────────────────────────────────────────
     # The SecurityEvent this task was derived from

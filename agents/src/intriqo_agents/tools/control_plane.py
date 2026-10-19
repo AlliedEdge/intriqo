@@ -10,8 +10,9 @@ from intriqo_agents.tools.base import Tool, ToolResult
 
 
 class _ControlPlaneTool(Tool):
-    def __init__(self, client: ControlPlaneClient) -> None:
+    def __init__(self, client: ControlPlaneClient, claim_token: str | None = None) -> None:
         self.client = client
+        self.claim_token = claim_token
 
     def _safe(
         self,
@@ -81,9 +82,16 @@ class SubmitFindingTool(_ControlPlaneTool):
     def input_schema(self) -> dict[str, Any]: return {"type": "object", "required": ["finding"]}
     def _run(self, input_data: dict[str, Any]) -> ToolResult:
         try:
-            return ToolResult.ok({"finding": self.client.submit_finding(input_data["finding"])})
+            claim_token = self.claim_token or input_data.get("claim_token")
+            return ToolResult.ok({
+                "finding": self.client.submit_finding(
+                    input_data["finding"], claim_token,
+                ),
+            })
         except ControlPlaneError as exc:
             return ToolResult.fail(str(exc), {"operation": self.name, "status_code": exc.status_code})
+        except ValueError as exc:
+            return ToolResult.fail(str(exc), {"operation": self.name})
 
 
 class UpdateTaskTool(_ControlPlaneTool):
@@ -95,6 +103,13 @@ class UpdateTaskTool(_ControlPlaneTool):
     def input_schema(self) -> dict[str, Any]: return {"type": "object", "required": ["task_id", "status"]}
     def _run(self, input_data: dict[str, Any]) -> ToolResult:
         try:
-            return ToolResult.ok({"task": self.client.update_task_status(input_data["task_id"], input_data["status"])})
+            claim_token = self.claim_token or input_data.get("claim_token")
+            return ToolResult.ok({
+                "task": self.client.update_task_status(
+                    input_data["task_id"], input_data["status"], claim_token,
+                ),
+            })
         except ControlPlaneError as exc:
             return ToolResult.fail(str(exc), {"operation": self.name, "status_code": exc.status_code})
+        except ValueError as exc:
+            return ToolResult.fail(str(exc), {"operation": self.name})

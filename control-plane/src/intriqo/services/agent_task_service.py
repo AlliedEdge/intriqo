@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 import uuid
 from datetime import datetime, timezone
 
@@ -66,6 +67,14 @@ class TaskClaimExpiredError(Exception):
         self.task_id = task_id
 
 
+class TaskClaimTokenError(Exception):
+    """The caller did not prove possession of the current lease token."""
+
+    def __init__(self, task_id: str) -> None:
+        super().__init__(f"The claim token for AgentTask '{task_id}' is invalid or missing")
+        self.task_id = task_id
+
+
 class TaskNotOwnedError(Exception):
     """The caller does not own the active task claim."""
 
@@ -83,7 +92,7 @@ class TaskOverrideRequiredError(Exception):
 
 
 class FindingConflictError(Exception):
-    """The task/agent logical-label uniqueness constraint was violated."""
+    """A task finding uniqueness constraint was violated."""
 
     def __init__(self, task_id: str, agent_name: str) -> None:
         super().__init__(
@@ -93,18 +102,29 @@ class FindingConflictError(Exception):
         self.agent_name = agent_name
 
 
-def _require_active_claim(task: AgentTask, actor: str) -> None:
-    """Require an AGENT caller to own a lease that is valid at this instant."""
+def _require_active_claim(
+    task: AgentTask,
+    actor: str,
+    claim_token: str | None,
+) -> None:
+    """Require identity, an unexpired lease, and possession of its token."""
     if task.claimed_by != actor:
         raise TaskNotOwnedError(task.task_id)
     if task.claim_expires_at is None or task.claim_expires_at <= datetime.now(timezone.utc):
         raise TaskClaimExpiredError(task.task_id)
+    if (
+        claim_token is None
+        or task.claim_token is None
+        or not secrets.compare_digest(task.claim_token, claim_token)
+    ):
+        raise TaskClaimTokenError(task.task_id)
 
 
 async def claim_task(
     db: AsyncSession,
     task_id: str,
     identity: str,
+    claim_token: str | None = None,
 ) -> AgentTask:
     """Atomically claim a pending or in-progress task for one lease period."""
     repo = AgentTaskRepository(db)
@@ -112,6 +132,8 @@ async def claim_task(
         task_id,
         identity,
         get_settings().agent_task_lease_seconds,
+        claim_token,
+        secrets.token_urlsafe(32),
     )
     if task is None:
         # The conditional UPDATE intentionally returns no row for all failed
@@ -122,6 +144,12 @@ async def claim_task(
             raise AgentTaskNotFoundError(task_id)
         if current.status not in {"PENDING", "IN_PROGRESS"}:
             raise TaskNotClaimableError(task_id, current.status)
+        if (
+            current.claimed_by == identity
+            and current.claim_expires_at is not None
+            and current.claim_expires_at > datetime.now(timezone.utc)
+        ):
+            raise TaskClaimTokenError(task_id)
         if (
             current.claimed_by is not None
             and current.claimed_by != identity
@@ -158,6 +186,7 @@ async def update_task_status(
     actor: str = "system",
     actor_role: str = "AGENT",
     override: bool = False,
+    claim_token: str | None = None,
 ) -> AgentTask:
     """Apply the small, explicit task state machine used by agent runners."""
     if new_status not in VALID_STATUSES:
@@ -169,9 +198,64 @@ async def update_task_status(
 
     is_override = actor_role in {"ADMIN", "ANALYST"} and override
     if actor_role == "AGENT":
-        _require_active_claim(task, actor)
+        _require_active_claim(task, actor, claim_token)
     elif not is_override:
         raise TaskOverrideRequiredError("task status updates")
+
+    if is_override:
+        # Overrides are security-sensitive mutations.  Keep the state change
+        # and its required audit row in one savepoint so an audit failure
+        # cannot leave the override applied without evidence.  Repeated
+        # same-state overrides are recorded as idempotent audit events.
+        async with db.begin_nested():
+            if task.status == new_status:
+                await audit_service.record_required(
+                    db,
+                    actor=actor,
+                    action=audit_service.ACTION_TASK_STATUS_OVERRIDDEN,
+                    resource_type="agent_task",
+                    resource_id=task_id,
+                    extra={
+                        "from_status": task.status,
+                        "status": task.status,
+                        "override": True,
+                        "override_role": actor_role,
+                        "idempotent": True,
+                    },
+                )
+                return task
+            old_status = task.status
+            allowed = {
+                "PENDING": {"IN_PROGRESS", "FAILED"},
+                "IN_PROGRESS": {"COMPLETED", "FAILED"},
+            }
+            if new_status not in allowed.get(task.status, set()):
+                raise InvalidStatusTransitionError(
+                    f"Cannot transition task '{task_id}' from {task.status} to {new_status}"
+                )
+            now = datetime.now(timezone.utc)
+            task.status = new_status
+            task.updated_at = now
+            if new_status in {"COMPLETED", "FAILED"}:
+                task.completed_at = now
+                task.claimed_by = None
+                task.claim_expires_at = None
+                task.claim_token = None
+            await repo.update(task)
+            await audit_service.record_required(
+                db,
+                actor=actor,
+                action=audit_service.ACTION_TASK_STATUS_OVERRIDDEN,
+                resource_type="agent_task",
+                resource_id=task_id,
+                extra={
+                    "from_status": old_status,
+                    "status": new_status,
+                    "override": True,
+                    "override_role": actor_role,
+                },
+            )
+            return task
 
     if task.status == new_status:
         return task
@@ -191,6 +275,7 @@ async def update_task_status(
         task.completed_at = now
         task.claimed_by = None
         task.claim_expires_at = None
+        task.claim_token = None
     await repo.update(task)
     action = (
         audit_service.ACTION_TASK_STATUS_OVERRIDDEN
@@ -285,36 +370,25 @@ async def create_task(
     return task
 
 
-async def submit_finding(
+async def _create_finding(
     db: AsyncSession,
     payload: FindingCreate,
-    actor: str = "system",
-    actor_role: str = "AGENT",
-    override: bool = False,
+    actor: str,
+    actor_role: str,
+    override: bool,
+    task: AgentTask,
+    task_repo: AgentTaskRepository,
+    finding_repo: FindingRepository,
+    *,
+    audit_required: bool,
+    legacy_retry_allowed: bool,
 ) -> Finding:
-    """Submit an agent result (Finding) for a task."""
-    # Verify the task exists
-    task_repo = AgentTaskRepository(db)
-    task = await task_repo.get_by_id_for_update(payload.task_id)
-    if task is None:
-        raise AgentTaskNotFoundError(payload.task_id)
+    """Create one finding and apply its lifecycle transition.
 
-    finding_repo = FindingRepository(db)
-    existing = await finding_repo.get_by_task_submitted_by(payload.task_id, actor)
-    if actor_role == "AGENT":
-        # A retry from the same authenticated submitter is idempotent even
-        # after its task was completed and the lease was cleared.
-        if existing is not None:
-            return existing
-        _require_active_claim(task, actor)
-    elif actor_role in {"ADMIN", "ANALYST"}:
-        if not override:
-            raise TaskOverrideRequiredError("finding submissions")
-        if existing is not None:
-            return existing
-    else:
-        raise TaskOverrideRequiredError("finding submissions")
-
+    The caller holds the task row lock.  The finding unique constraints remain
+    the final concurrency boundary, including when callers do not share that
+    lock (for example, independent workers or future write paths).
+    """
     now = datetime.now(timezone.utc)
 
     event = None
@@ -330,7 +404,9 @@ async def submit_finding(
     source = payload.source
     if source is None:
         source = "ML" if event_type == "ML_ANOMALY" else (
-            "DETERMINISTIC" if event_type in {"PORT_SCAN", "UDP_SCAN", "SYN_FLOOD"} else "AGENT"
+            "DETERMINISTIC"
+            if event_type in {"PORT_SCAN", "UDP_SCAN", "SYN_FLOOD"}
+            else "AGENT"
         )
     severity = payload.severity or (event.severity if event is not None else None)
     provenance = dict(payload.provenance)
@@ -387,12 +463,26 @@ async def submit_finding(
         async with db.begin_nested():
             finding = await finding_repo.create(finding)
     except IntegrityError as exc:
+        # Re-read after the savepoint rollback.  A same-label legacy row is a
+        # compatibility retry only after the caller already proved its active
+        # claim; agent_name itself is never treated as an identity.
+        existing = await finding_repo.get_by_task_submitted_by(payload.task_id, actor)
+        if existing is not None:
+            if existing.agent_name == payload.agent_name:
+                return existing
+            raise FindingConflictError(payload.task_id, payload.agent_name) from exc
         existing = await finding_repo.get_by_task_agent(payload.task_id, payload.agent_name)
+        if (
+            existing is not None
+            and existing.submitted_by is None
+            and legacy_retry_allowed
+        ):
+            return existing
         if existing is None:
             raise exc
-        if existing.submitted_by == actor:
-            return existing
         raise FindingConflictError(payload.task_id, payload.agent_name) from exc
+
+    audit_record = audit_service.record_required if audit_required else audit_service.record
 
     # A result closes the investigation attempt, but failed evidence remains
     # visibly failed rather than being misreported as a successful task.
@@ -402,8 +492,9 @@ async def submit_finding(
         task.updated_at = now
         task.claimed_by = None
         task.claim_expires_at = None
+        task.claim_token = None
         await task_repo.update(task)
-        await audit_service.record(
+        await audit_record(
             db,
             actor=actor,
             action=(
@@ -413,10 +504,14 @@ async def submit_finding(
             ),
             resource_type="agent_task",
             resource_id=task.task_id,
-            extra={"status": task.status, "via": "finding_submission"},
+            extra={
+                "status": task.status,
+                "via": "finding_submission",
+                "override": actor_role in {"ADMIN", "ANALYST"} and override,
+            },
         )
 
-    await audit_service.record(
+    await audit_record(
         db,
         actor=actor,
         action=(
@@ -448,3 +543,140 @@ async def submit_finding(
         finding.finding_id, finding.task_id, finding.agent_name, finding.status,
     )
     return finding
+
+
+async def submit_finding(
+    db: AsyncSession,
+    payload: FindingCreate,
+    actor: str = "system",
+    actor_role: str = "AGENT",
+    override: bool = False,
+    claim_token: str | None = None,
+) -> Finding:
+    """Submit an agent result (Finding) for a task.
+
+    Agent writes require the current authenticated claimant's unexpired lease
+    token.  The only token-free agent path is a no-op retry of an existing
+    finding already submitted by that same authenticated identity after the
+    task reached a terminal state; it cannot change any stored value.
+    """
+    task_repo = AgentTaskRepository(db)
+    task = await task_repo.get_by_id_for_update(payload.task_id)
+    if task is None:
+        raise AgentTaskNotFoundError(payload.task_id)
+
+    finding_repo = FindingRepository(db)
+    is_override = actor_role in {"ADMIN", "ANALYST"} and override
+    if actor_role == "AGENT":
+        existing = await finding_repo.get_by_task_submitted_by(payload.task_id, actor)
+        if existing is not None:
+            if existing.agent_name != payload.agent_name:
+                raise FindingConflictError(payload.task_id, payload.agent_name)
+            if task.status in {"PENDING", "IN_PROGRESS"}:
+                _require_active_claim(task, actor, claim_token)
+            # Idempotent retry compatibility: once terminal, this is a read of
+            # the already accepted result, not a new mutation, so no audit row
+            # is emitted and no lease is required.
+            return existing
+
+        # A legacy row has no authenticated submitter to match.  Preserve the
+        # old (task, agent_name) idempotency contract as a read-only retry, but
+        # require the current lease while the task is still mutable.  Once the
+        # task is terminal there is no lease to prove; returning the already
+        # stored legacy row is safe because it performs no mutation and does
+        # not treat agent_name as an authorization identity.
+        existing_by_agent = await finding_repo.get_by_task_agent(
+            payload.task_id, payload.agent_name
+        )
+        if existing_by_agent is not None:
+            if existing_by_agent.submitted_by is None:
+                if task.status in {"PENDING", "IN_PROGRESS"}:
+                    _require_active_claim(task, actor, claim_token)
+                return existing_by_agent
+            raise FindingConflictError(payload.task_id, payload.agent_name)
+
+        _require_active_claim(task, actor, claim_token)
+    elif actor_role in {"ADMIN", "ANALYST"}:
+        if not override:
+            raise TaskOverrideRequiredError("finding submissions")
+        existing = await finding_repo.get_by_task_submitted_by(payload.task_id, actor)
+        if existing is not None:
+            if existing.agent_name != payload.agent_name:
+                raise FindingConflictError(payload.task_id, payload.agent_name)
+            # Repeated overrides are auditable even though they are idempotent.
+            async with db.begin_nested():
+                await audit_service.record_required(
+                    db,
+                    actor=actor,
+                    action=audit_service.ACTION_FINDING_SUBMITTED_OVERRIDE,
+                    resource_type="finding",
+                    resource_id=existing.finding_id,
+                    extra={
+                        "task_id": existing.task_id,
+                        "agent_name": existing.agent_name,
+                        "override": True,
+                        "override_role": actor_role,
+                        "idempotent": True,
+                    },
+                )
+            return existing
+    else:
+        raise TaskOverrideRequiredError("finding submissions")
+
+    # Human overrides may explicitly replay a legacy row.  Agent legacy rows
+    # were handled above so their mutable-task path proves an active claim and
+    # their terminal-task path is read-only.  The partial unique index leaves
+    # NULL-submitter rows out of authenticated uniqueness checks.
+    existing_by_agent = await finding_repo.get_by_task_agent(
+        payload.task_id, payload.agent_name
+    )
+    if existing_by_agent is not None:
+        if existing_by_agent.submitted_by is None:
+            if is_override:
+                async with db.begin_nested():
+                    await audit_service.record_required(
+                        db,
+                        actor=actor,
+                        action=audit_service.ACTION_FINDING_SUBMITTED_OVERRIDE,
+                        resource_type="finding",
+                        resource_id=existing_by_agent.finding_id,
+                        extra={
+                            "task_id": existing_by_agent.task_id,
+                            "agent_name": existing_by_agent.agent_name,
+                            "override": True,
+                            "override_role": actor_role,
+                            "idempotent": True,
+                            "legacy_submitted_by_null": True,
+                        },
+                    )
+                return existing_by_agent
+        raise FindingConflictError(payload.task_id, payload.agent_name)
+
+    if is_override:
+        # The savepoint covers finding insertion, terminal task clearing, and
+        # both required override audit writes.
+        async with db.begin_nested():
+            return await _create_finding(
+                db,
+                payload,
+                actor,
+                actor_role,
+                override,
+                task,
+                task_repo,
+                finding_repo,
+                audit_required=True,
+                legacy_retry_allowed=False,
+            )
+    return await _create_finding(
+        db,
+        payload,
+        actor,
+        actor_role,
+        override,
+        task,
+        task_repo,
+        finding_repo,
+        audit_required=False,
+        legacy_retry_allowed=actor_role == "AGENT",
+    )

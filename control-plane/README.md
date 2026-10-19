@@ -59,9 +59,15 @@ flow.
 
 Agent task claims use a PostgreSQL conditional update with a short lease. Set
 `AGENT_TASK_LEASE_SECONDS` to a value from 1 to 86400 seconds; it defaults to
-300 seconds. Agents must claim a task before updating its status or submitting
-a finding. Analysts and administrators may make those changes only with an
-explicit `?override=true` request parameter, which is recorded in the audit log.
+300 seconds. A successful `POST /api/v1/agent-tasks/{task_id}/claim` returns a
+server-generated `claim_token`; agents must send it as `X-Claim-Token` on
+same-identity renewal, status updates, and finding submissions. The token is
+not included in ordinary task responses and changes on every reclaim. Analysts
+and administrators may make those changes without a token only with an
+explicit `?override=true` request parameter, which is recorded transactionally
+in the audit log. Repeating an already accepted terminal finding from the same
+authenticated submitter is a read-only idempotent retry; it cannot change the
+stored result or task state.
 
 The auth routes also include a bounded process-local sliding-window guard for
 obvious bursts on signup, login, email requests, and token consumption. A

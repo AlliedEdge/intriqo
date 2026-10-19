@@ -80,9 +80,32 @@ class ControlPlaneClient:
     def get_task(self, task_id: str) -> dict[str, Any]:
         return self._request("GET", f"/api/v1/agent-tasks/{task_id}")
 
-    def claim_task(self, task_id: str) -> dict[str, Any]:
-        """Atomically claim one persisted task for this authenticated agent."""
-        return self._request("POST", f"/api/v1/agent-tasks/{task_id}/claim")
+    @staticmethod
+    def _claim_headers(claim_token: str | None) -> dict[str, str]:
+        """Build the lease-proof header without ever putting it in a log message."""
+        if not isinstance(claim_token, str) or not claim_token.strip():
+            raise ValueError("claim_token is required for a token-bound Control Plane request")
+        return {"X-Claim-Token": claim_token}
+
+    def claim_task(self, task_id: str, claim_token: str | None = None) -> dict[str, Any]:
+        """Atomically claim one persisted task for this authenticated agent.
+
+        The initial claim omits ``X-Claim-Token``.  Supplying a token performs
+        the backend's same-identity lease renewal operation.
+        """
+        kwargs: dict[str, Any] = {}
+        if claim_token is not None:
+            kwargs["headers"] = self._claim_headers(claim_token)
+        return self._request("POST", f"/api/v1/agent-tasks/{task_id}/claim", **kwargs)
+
+    def renew_task_lease(self, task_id: str, claim_token: str) -> dict[str, Any]:
+        """Renew a task lease using the current claim token."""
+        return self.claim_task(task_id, claim_token)
+
+    # Keep the short name available to callers that model the operation as a
+    # heartbeat while retaining the explicit API above.
+    def renew_task(self, task_id: str, claim_token: str) -> dict[str, Any]:
+        return self.renew_task_lease(task_id, claim_token)
 
     def list_tasks(
         self,
@@ -111,13 +134,33 @@ class ControlPlaneClient:
         """Read only the event IDs supplied by the assigned incident."""
         return [self.get_event(event_id) for event_id in event_ids]
 
-    def submit_finding(self, finding: Mapping[str, Any]) -> dict[str, Any]:
-        """Submit an agent_result_v1-compatible finding through FastAPI."""
-        return self._request("POST", "/api/v1/findings", json=dict(finding))
+    def submit_finding(
+        self,
+        finding: Mapping[str, Any],
+        claim_token: str | None = None,
+    ) -> dict[str, Any]:
+        """Submit a finding with proof of the active task lease."""
+        return self._request(
+            "POST",
+            "/api/v1/findings",
+            headers=self._claim_headers(claim_token),
+            json=dict(finding),
+        )
 
     def list_findings(self, task_id: str) -> list[dict[str, Any]]:
         body = self._request("GET", "/api/v1/findings", params={"task_id": task_id, "page_size": 1})
         return list(body.get("items", []))
 
-    def update_task_status(self, task_id: str, status: str) -> dict[str, Any]:
-        return self._request("PATCH", f"/api/v1/agent-tasks/{task_id}", json={"status": status})
+    def update_task_status(
+        self,
+        task_id: str,
+        status: str,
+        claim_token: str | None = None,
+    ) -> dict[str, Any]:
+        """Update a task lifecycle status with proof of the active lease."""
+        return self._request(
+            "PATCH",
+            f"/api/v1/agent-tasks/{task_id}",
+            headers=self._claim_headers(claim_token),
+            json={"status": status},
+        )

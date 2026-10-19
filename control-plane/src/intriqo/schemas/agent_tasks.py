@@ -55,6 +55,16 @@ class AgentTaskResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AgentTaskClaimResponse(AgentTaskResponse):
+    """Response returned only by the claim endpoint.
+
+    Claim tokens are intentionally absent from ordinary task GET/list/create
+    responses so a read-only task response cannot disclose lease credentials.
+    """
+
+    claim_token: str
+
+
 class AgentTaskListParams(BaseModel):
     status: str | None = None
     priority: str | None = None
