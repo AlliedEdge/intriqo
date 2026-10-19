@@ -78,13 +78,13 @@ class _LeaseHeartbeat:
                 if not callable(renew):
                     raise RuntimeError("Control Plane client has no lease renewal method")
                 renewal = renew(self._task_id, self._claim_token)
-                if isinstance(renewal, Mapping):
-                    returned_token = renewal.get("claim_token")
-                    if returned_token is not None and returned_token != self._claim_token:
-                        raise RuntimeError("Control Plane returned a different lease token")
-                    returned_status = renewal.get("status")
-                    if returned_status is not None and returned_status != "IN_PROGRESS":
-                        raise RuntimeError("Control Plane did not keep the task in progress")
+                if not isinstance(renewal, Mapping):
+                    raise RuntimeError("Control Plane returned a malformed lease renewal")
+                returned_token = renewal.get("claim_token")
+                if returned_token != self._claim_token:
+                    raise RuntimeError("Control Plane did not return the current lease token")
+                if renewal.get("status") != "IN_PROGRESS":
+                    raise RuntimeError("Control Plane did not keep the task in progress")
             except Exception as exc:  # noqa: BLE001 - ownership loss is fail-closed
                 self._unsafe.set()
                 # Never include request headers or token-bearing exception data

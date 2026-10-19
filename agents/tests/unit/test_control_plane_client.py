@@ -219,8 +219,9 @@ def test_remote_supported_event_lifecycle(event_type, details, expected_evidence
 
 
 class _HeartbeatClient:
-    def __init__(self, renewal_error: bool = False) -> None:
+    def __init__(self, renewal_error: bool = False, malformed_renewal: bool = False) -> None:
         self.renewal_error = renewal_error
+        self.malformed_renewal = malformed_renewal
         self.renewals: list[tuple[str, str]] = []
         self.statuses: list[tuple[str, str]] = []
         self.findings: list[tuple[dict, str]] = []
@@ -270,6 +271,8 @@ class _HeartbeatClient:
         self.renewals.append((task_id, claim_token))
         if self.renewal_error:
             raise ControlPlaneError("lease ownership changed", status_code=409)
+        if self.malformed_renewal:
+            return {"task_id": task_id, "status": "IN_PROGRESS"}
         return {"task_id": task_id, "status": "IN_PROGRESS", "claim_token": claim_token}
 
 
@@ -297,6 +300,18 @@ def test_heartbeat_failure_suppresses_finding_and_failure_completion_write() -> 
     agent = _SlowInvestigationAgent(heartbeat_interval=0.01)
 
     result = agent.execute_task("task-heartbeat-fail", client, "lease-token")
+
+    assert result.status == "FAILED"
+    assert result.metadata["lease_unsafe"] is True
+    assert client.findings == []
+    assert client.statuses == [("IN_PROGRESS", "lease-token")]
+
+
+def test_malformed_heartbeat_response_is_treated_as_ownership_loss() -> None:
+    client = _HeartbeatClient(malformed_renewal=True)
+    agent = _SlowInvestigationAgent(heartbeat_interval=0.01)
+
+    result = agent.execute_task("task-heartbeat-malformed", client, "lease-token")
 
     assert result.status == "FAILED"
     assert result.metadata["lease_unsafe"] is True

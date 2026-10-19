@@ -151,6 +151,15 @@ async def claim_task(
         ):
             raise TaskClaimTokenError(task_id)
         if (
+            claim_token is not None
+            and current.claim_expires_at is not None
+            and current.claim_expires_at <= datetime.now(timezone.utc)
+        ):
+            # A token is proof for renewing the current active lease only. An
+            # expired worker must make a fresh tokenless claim instead of
+            # reviving its old lease credential.
+            raise TaskClaimTokenError(task_id)
+        if (
             current.claimed_by is not None
             and current.claimed_by != identity
             and current.claim_expires_at is not None

@@ -246,6 +246,33 @@ async def test_expired_claim_can_be_reclaimed(client, db, analyst_headers, agent
 
 
 @pytest.mark.asyncio
+async def test_expired_claim_token_cannot_renew_and_fresh_claim_gets_new_token(
+    client, db, analyst_headers, agent_headers
+):
+    task_id = await _create_task(client, analyst_headers)
+    stale_token = await _claim(client, task_id, agent_headers)
+    await db.execute(
+        update(AgentTask)
+        .where(AgentTask.task_id == task_id)
+        .values(claim_expires_at=datetime.now(timezone.utc) - timedelta(seconds=1))
+    )
+    await db.commit()
+
+    stale_renewal = await client.post(
+        f"/api/v1/agent-tasks/{task_id}/claim",
+        headers={**agent_headers, "X-Claim-Token": stale_token},
+    )
+    assert stale_renewal.status_code == 409
+    assert stale_renewal.json()["error"]["code"] == "TASK_CLAIM_TOKEN_INVALID"
+
+    fresh_claim = await client.post(
+        f"/api/v1/agent-tasks/{task_id}/claim", headers=agent_headers
+    )
+    assert fresh_claim.status_code == 200, fresh_claim.text
+    assert fresh_claim.json()["claim_token"] != stale_token
+
+
+@pytest.mark.asyncio
 async def test_reclaimed_lease_rejects_stale_status_and_finding_token(
     client, db, analyst_headers, agent_headers, other_agent_headers
 ):
@@ -600,6 +627,38 @@ async def test_override_audit_failure_rolls_back_status_mutation(
     )
     assert response.status_code == 500
 
+    task = await client.get(f"/api/v1/agent-tasks/{task_id}", headers=analyst_headers)
+    assert task.status_code == 200
+    assert task.json()["status"] == "PENDING"
+
+
+@pytest.mark.asyncio
+async def test_override_audit_failure_rolls_back_finding_mutation(
+    client, analyst_headers, monkeypatch
+):
+    task_id = await _create_task(client, analyst_headers)
+
+    async def fail_required_audit(*args, **kwargs):
+        raise RuntimeError("audit store unavailable")
+
+    monkeypatch.setattr(audit_service, "record_required", fail_required_audit)
+    response = await client.post(
+        "/api/v1/findings?override=true",
+        json={
+            "task_id": task_id,
+            "agent_name": "human-reviewer",
+            "status": "SUCCESS",
+            "confidence": 1.0,
+        },
+        headers=analyst_headers,
+    )
+    assert response.status_code == 500
+
+    findings = await client.get(
+        f"/api/v1/findings?task_id={task_id}", headers=analyst_headers
+    )
+    assert findings.status_code == 200
+    assert findings.json()["items"] == []
     task = await client.get(f"/api/v1/agent-tasks/{task_id}", headers=analyst_headers)
     assert task.status_code == 200
     assert task.json()["status"] == "PENDING"

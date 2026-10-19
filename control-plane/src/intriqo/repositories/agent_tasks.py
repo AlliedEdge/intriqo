@@ -73,16 +73,20 @@ class AgentTaskRepository:
             if presented_claim_token is not None
             else false()
         )
+        available_claim = (
+            same_identity_renewal
+            if presented_claim_token is not None
+            else or_(
+                AgentTask.claimed_by.is_(None),
+                AgentTask.claim_expires_at <= func.now(),
+            )
+        )
         statement = (
             update(AgentTask)
             .where(
                 AgentTask.task_id == task_id,
                 AgentTask.status.in_(("PENDING", "IN_PROGRESS")),
-                or_(
-                    AgentTask.claimed_by.is_(None),
-                    AgentTask.claim_expires_at <= func.now(),
-                    same_identity_renewal,
-                ),
+                available_claim,
             )
             .values(
                 claimed_by=identity,
