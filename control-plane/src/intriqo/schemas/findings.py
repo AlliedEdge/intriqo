@@ -53,6 +53,7 @@ class FindingResponse(BaseModel):
     finding_id: str
     task_id: str
     agent_name: str
+    submitted_by: str | None = None
     status: str
     confidence: float
     severity: str | None = None

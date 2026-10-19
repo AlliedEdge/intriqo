@@ -57,6 +57,12 @@ Public registration always creates an `ANALYST` account. Existing service
 accounts and administrative role changes remain outside the public signup
 flow.
 
+Agent task claims use a PostgreSQL conditional update with a short lease. Set
+`AGENT_TASK_LEASE_SECONDS` to a value from 1 to 86400 seconds; it defaults to
+300 seconds. Agents must claim a task before updating its status or submitting
+a finding. Analysts and administrators may make those changes only with an
+explicit `?override=true` request parameter, which is recorded in the audit log.
+
 The auth routes also include a bounded process-local sliding-window guard for
 obvious bursts on signup, login, email requests, and token consumption. A
 multi-instance deployment should complement it with a shared gateway or Redis

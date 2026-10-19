@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from intriqo.config import Settings
 from intriqo.schemas.events import SecurityEventCreate
 from intriqo.schemas.incidents import IncidentCreate
 from intriqo.schemas.agent_tasks import AgentTaskCreate
@@ -146,3 +147,13 @@ class TestFindingCreate:
             confidence=0.5,
         )
         assert f.status == "INCONCLUSIVE"
+
+
+class TestAgentTaskLeaseSettings:
+    def test_default_lease_is_five_minutes(self):
+        assert Settings(_env_file=None).agent_task_lease_seconds == 300
+
+    @pytest.mark.parametrize("value", [0, -1, 86401])
+    def test_lease_is_bounded(self, value):
+        with pytest.raises(ValidationError, match="AGENT_TASK_LEASE_SECONDS"):
+            Settings(agent_task_lease_seconds=value)

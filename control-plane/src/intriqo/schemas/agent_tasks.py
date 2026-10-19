@@ -41,6 +41,8 @@ class AgentTaskResponse(BaseModel):
     description: str
     priority: str
     status: str
+    claimed_by: str | None = None
+    claim_expires_at: datetime | None = None
     idempotency_key: str | None = None
     event_id: str | None
     incident_id: str | None

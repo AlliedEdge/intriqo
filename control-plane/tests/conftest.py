@@ -146,6 +146,14 @@ def agent_headers(agent_token):
 
 
 @pytest.fixture
+def other_agent_headers():
+    token = create_access_token(
+        subject="other_agent_service", role="AGENT", extra={"user_id": "user-agent-2"}
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
 def admin_headers(admin_token):
     return {"Authorization": f"Bearer {admin_token}"}
 

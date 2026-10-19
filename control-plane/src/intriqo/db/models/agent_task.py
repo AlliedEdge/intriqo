@@ -40,6 +40,10 @@ class AgentTask(Base):
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="PENDING", index=True
     )  # PENDING | IN_PROGRESS | COMPLETED | FAILED | CANCELLED
+    claimed_by: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    claim_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
 
     # ── Foreign keys ──────────────────────────────────────────────────────────
     # The SecurityEvent this task was derived from
@@ -102,4 +106,5 @@ class AgentTask(Base):
         ),
         Index("ix_agent_tasks_status_priority",  "status", "priority"),
         Index("ix_agent_tasks_created_at",       "created_at"),
+        Index("ix_agent_tasks_claim_lease",      "claimed_by", "claim_expires_at"),
     )

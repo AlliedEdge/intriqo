@@ -197,14 +197,17 @@ class TestAgentTasksAuthorization:
             assert resp.status_code == 200, f"Failed for headers: {headers}"
 
     @pytest.mark.asyncio
-    async def test_all_roles_can_update_task_status(self, client, analyst_headers, admin_headers, agent_headers):
+    async def test_agent_updates_task_status_after_claim(self, client, analyst_headers, agent_headers):
         create_resp = await client.post(
             "/api/v1/agent-tasks",
             json={"task_type": "INVESTIGATION", "description": "Status task", "priority": "LOW"},
             headers=analyst_headers,
         )
         task_id = create_resp.json()["task_id"]
-        # Agent can update status (this is core to the agent workflow)
+        claim_resp = await client.post(
+            f"/api/v1/agent-tasks/{task_id}/claim", headers=agent_headers
+        )
+        assert claim_resp.status_code == 200
         resp = await client.patch(
             f"/api/v1/agent-tasks/{task_id}",
             json={"status": "IN_PROGRESS"},
@@ -221,7 +224,7 @@ class TestAgentTasksAuthorization:
 # ── /findings ─────────────────────────────────────────────────────────────────
 
 class TestFindingsAuthorization:
-    """All authenticated roles can submit and read findings."""
+    """Claimants submit directly; human roles must opt into an override."""
 
     @pytest.mark.asyncio
     async def test_agent_can_submit_finding(self, client, analyst_headers, agent_headers):
@@ -231,6 +234,10 @@ class TestFindingsAuthorization:
             headers=analyst_headers,
         )
         task_id = task_resp.json()["task_id"]
+        claim_resp = await client.post(
+            f"/api/v1/agent-tasks/{task_id}/claim", headers=agent_headers
+        )
+        assert claim_resp.status_code == 200
 
         finding_payload = {
             "task_id": task_id,
@@ -261,7 +268,9 @@ class TestFindingsAuthorization:
             "findings": ["Finding A"],
             "evidence": [],
         }
-        resp = await client.post("/api/v1/findings", json=finding_payload, headers=analyst_headers)
+        resp = await client.post(
+            "/api/v1/findings?override=true", json=finding_payload, headers=analyst_headers
+        )
         assert resp.status_code == 201
 
     @pytest.mark.asyncio

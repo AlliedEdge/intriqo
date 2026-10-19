@@ -76,10 +76,12 @@ def _require_role(*allowed_roles: str):
 require_any    = _extract_user                                        # any authenticated user
 require_analyst = _require_role("ADMIN", "ANALYST")                  # analysts + admins
 require_agent   = _require_role("ADMIN", "ANALYST", "AGENT")         # + agent service accounts
+require_agent_only = _require_role("AGENT")                            # claim operation
 require_admin   = _require_role("ADMIN")                             # admin only
 
 # Type alias for cleaner function signatures
 AuthUser = Annotated[CurrentUser, Depends(require_any)]
 AnalystUser = Annotated[CurrentUser, Depends(require_analyst)]
 AgentUser = Annotated[CurrentUser, Depends(require_agent)]
+AgentOnlyUser = Annotated[CurrentUser, Depends(require_agent_only)]
 AdminUser = Annotated[CurrentUser, Depends(require_admin)]

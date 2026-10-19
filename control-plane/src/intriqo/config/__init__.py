@@ -89,6 +89,14 @@ class Settings(BaseSettings):
 
     # ── Agents ───────────────────────────────────────────────────────────────
     agent_service_url: str = "http://localhost:8001"
+    agent_task_lease_seconds: int = 300
+
+    @field_validator("agent_task_lease_seconds")
+    @classmethod
+    def validate_agent_task_lease_seconds(cls, value: int) -> int:
+        if not 1 <= value <= 86400:
+            raise ValueError("AGENT_TASK_LEASE_SECONDS must be between 1 and 86400")
+        return value
 
     # ── CORS ─────────────────────────────────────────────────────────────────
     cors_allow_origins: list[str] = ["http://localhost:5173"]  # Vite dev server

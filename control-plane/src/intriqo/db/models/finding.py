@@ -30,6 +30,8 @@ class Finding(Base):
 
     # ── Agent result contract fields ──────────────────────────────────────────
     agent_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    # Nullable for findings written before authenticated task claiming existed.
+    submitted_by: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, index=True
     )  # SUCCESS | FAILED | INCONCLUSIVE

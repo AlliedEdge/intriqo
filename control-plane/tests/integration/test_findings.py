@@ -43,6 +43,10 @@ async def _create_full_chain(client, agent_headers, analyst_headers):
         headers=analyst_headers,
     )
     task_id = task_resp.json()["task_id"]
+    claim_resp = await client.post(
+        f"/api/v1/agent-tasks/{task_id}/claim", headers=agent_headers
+    )
+    assert claim_resp.status_code == 200, claim_resp.text
     return event_id, incident_id, task_id
 
 
@@ -68,6 +72,7 @@ async def test_submit_finding(client, agent_headers, analyst_headers):
     assert body["status"] == "SUCCESS"
     assert body["confidence"] == 0.95
     assert body["task_id"] == task_id
+    assert body["submitted_by"] == "agent_service"
 
 
 @pytest.mark.asyncio

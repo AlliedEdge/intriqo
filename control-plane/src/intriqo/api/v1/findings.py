@@ -12,7 +12,14 @@ from intriqo.db.session import get_db
 from intriqo.repositories.findings import FindingRepository
 from intriqo.schemas.common import PaginatedResponse
 from intriqo.schemas.findings import FindingCreate, FindingResponse
-from intriqo.services.agent_task_service import AgentTaskNotFoundError, submit_finding
+from intriqo.services.agent_task_service import (
+    AgentTaskNotFoundError,
+    FindingConflictError,
+    TaskClaimExpiredError,
+    TaskNotOwnedError,
+    TaskOverrideRequiredError,
+    submit_finding,
+)
 
 router = APIRouter(prefix="/findings")
 
@@ -22,6 +29,7 @@ def _to_response(finding) -> FindingResponse:
         finding_id=finding.finding_id,
         task_id=finding.task_id,
         agent_name=finding.agent_name,
+        submitted_by=finding.submitted_by,
         status=finding.status,
         confidence=finding.confidence,
         severity=finding.severity,
@@ -43,14 +51,41 @@ async def submit(
     payload: FindingCreate,
     user: AgentUser,
     db: AsyncSession = Depends(get_db),
+    override: bool = Query(False),
 ) -> FindingResponse:
     """Submit an agent result (Finding) for a task."""
     try:
-        finding = await submit_finding(db, payload, actor=user.username)
+        finding = await submit_finding(
+            db,
+            payload,
+            actor=user.username,
+            actor_role=user.role,
+            override=override,
+        )
     except AgentTaskNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": {"code": "TASK_NOT_FOUND", "message": str(e)}},
+        )
+    except TaskClaimExpiredError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": {"code": "TASK_CLAIM_EXPIRED", "message": str(e)}},
+        )
+    except TaskNotOwnedError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": {"code": "TASK_NOT_OWNED", "message": str(e)}},
+        )
+    except TaskOverrideRequiredError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": {"code": "OVERRIDE_REQUIRED", "message": str(e)}},
+        )
+    except FindingConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": {"code": "FINDING_CONFLICT", "message": str(e)}},
         )
     return _to_response(finding)
 

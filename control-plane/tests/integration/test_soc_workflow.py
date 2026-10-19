@@ -126,6 +126,10 @@ async def test_duplicate_workflow_outcomes_and_relationships_are_traceable(
     assert first_task.status_code == retry_task.status_code == 201
     assert first_task.json()["task_id"] == retry_task.json()["task_id"]
     task_id = first_task.json()["task_id"]
+    claimed = await client.post(
+        f"/api/v1/agent-tasks/{task_id}/claim", headers=agent_headers
+    )
+    assert claimed.status_code == 200, claimed.text
 
     finding_payload = {
         "task_id": task_id,

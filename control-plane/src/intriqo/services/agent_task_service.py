@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from intriqo.config import get_settings
 from intriqo.db.models.agent_task import AgentTask
 from intriqo.db.models.finding import Finding
 from intriqo.repositories.agent_tasks import AgentTaskRepository
@@ -39,16 +40,139 @@ class InvalidStatusTransitionError(ValueError):
     pass
 
 
+class TaskClaimConflictError(Exception):
+    """The task is currently leased to another identity."""
+
+    def __init__(self, task_id: str, claimed_by: str | None = None) -> None:
+        super().__init__(f"AgentTask '{task_id}' is actively claimed by another agent")
+        self.task_id = task_id
+        self.claimed_by = claimed_by
+
+
+class TaskNotClaimableError(Exception):
+    """The task is terminal and cannot be claimed."""
+
+    def __init__(self, task_id: str, task_status: str) -> None:
+        super().__init__(f"AgentTask '{task_id}' with status {task_status} is not claimable")
+        self.task_id = task_id
+        self.task_status = task_status
+
+
+class TaskClaimExpiredError(Exception):
+    """The caller's lease is no longer active."""
+
+    def __init__(self, task_id: str) -> None:
+        super().__init__(f"The claim for AgentTask '{task_id}' has expired")
+        self.task_id = task_id
+
+
+class TaskNotOwnedError(Exception):
+    """The caller does not own the active task claim."""
+
+    def __init__(self, task_id: str) -> None:
+        super().__init__(f"AgentTask '{task_id}' is not owned by this agent")
+        self.task_id = task_id
+
+
+class TaskOverrideRequiredError(Exception):
+    """A human role must opt into changing an agent-owned task."""
+
+    def __init__(self, action: str) -> None:
+        super().__init__(f"An explicit override is required for {action}")
+        self.action = action
+
+
+class FindingConflictError(Exception):
+    """The task/agent logical-label uniqueness constraint was violated."""
+
+    def __init__(self, task_id: str, agent_name: str) -> None:
+        super().__init__(
+            f"A finding for AgentTask '{task_id}' and agent label '{agent_name}' already exists"
+        )
+        self.task_id = task_id
+        self.agent_name = agent_name
+
+
+def _require_active_claim(task: AgentTask, actor: str) -> None:
+    """Require an AGENT caller to own a lease that is valid at this instant."""
+    if task.claimed_by != actor:
+        raise TaskNotOwnedError(task.task_id)
+    if task.claim_expires_at is None or task.claim_expires_at <= datetime.now(timezone.utc):
+        raise TaskClaimExpiredError(task.task_id)
+
+
+async def claim_task(
+    db: AsyncSession,
+    task_id: str,
+    identity: str,
+) -> AgentTask:
+    """Atomically claim a pending or in-progress task for one lease period."""
+    repo = AgentTaskRepository(db)
+    task = await repo.claim(
+        task_id,
+        identity,
+        get_settings().agent_task_lease_seconds,
+    )
+    if task is None:
+        # The conditional UPDATE intentionally returns no row for all failed
+        # cases.  Read once only to translate that result into a stable API
+        # error; no lock is held while the caller performs work.
+        current = await repo.get_by_id(task_id)
+        if current is None:
+            raise AgentTaskNotFoundError(task_id)
+        if current.status not in {"PENDING", "IN_PROGRESS"}:
+            raise TaskNotClaimableError(task_id, current.status)
+        if (
+            current.claimed_by is not None
+            and current.claimed_by != identity
+            and current.claim_expires_at is not None
+            and current.claim_expires_at > datetime.now(timezone.utc)
+        ):
+            raise TaskClaimConflictError(task_id, current.claimed_by)
+        # A concurrent claimant may have won between the failed UPDATE and
+        # this diagnostic read.  Report it as a conflict rather than retrying
+        # the claim and accidentally obscuring the race.
+        raise TaskClaimConflictError(task_id, current.claimed_by)
+
+    await audit_service.record(
+        db,
+        actor=identity,
+        action=audit_service.ACTION_TASK_CLAIMED,
+        resource_type="agent_task",
+        resource_id=task_id,
+        extra={
+            "claimed_by": identity,
+            "claim_expires_at": task.claim_expires_at.isoformat()
+            if task.claim_expires_at is not None
+            else None,
+            "status": task.status,
+        },
+    )
+    return task
+
+
 async def update_task_status(
-    db: AsyncSession, task_id: str, new_status: str, actor: str = "system"
+    db: AsyncSession,
+    task_id: str,
+    new_status: str,
+    actor: str = "system",
+    actor_role: str = "AGENT",
+    override: bool = False,
 ) -> AgentTask:
     """Apply the small, explicit task state machine used by agent runners."""
     if new_status not in VALID_STATUSES:
         raise InvalidStatusTransitionError(f"Invalid task status '{new_status}'")
     repo = AgentTaskRepository(db)
-    task = await repo.get_by_id(task_id)
+    task = await repo.get_by_id_for_update(task_id)
     if task is None:
         raise AgentTaskNotFoundError(task_id)
+
+    is_override = actor_role in {"ADMIN", "ANALYST"} and override
+    if actor_role == "AGENT":
+        _require_active_claim(task, actor)
+    elif not is_override:
+        raise TaskOverrideRequiredError("task status updates")
+
     if task.status == new_status:
         return task
     old_status = task.status
@@ -65,15 +189,26 @@ async def update_task_status(
     task.updated_at = now
     if new_status in {"COMPLETED", "FAILED"}:
         task.completed_at = now
+        task.claimed_by = None
+        task.claim_expires_at = None
     await repo.update(task)
-    action = {
-        "IN_PROGRESS": audit_service.ACTION_TASK_STARTED,
-        "COMPLETED": audit_service.ACTION_TASK_COMPLETED,
-        "FAILED": audit_service.ACTION_TASK_FAILED,
-    }.get(new_status, audit_service.ACTION_TASK_STATUS_UPDATED)
+    action = (
+        audit_service.ACTION_TASK_STATUS_OVERRIDDEN
+        if is_override
+        else {
+            "IN_PROGRESS": audit_service.ACTION_TASK_STARTED,
+            "COMPLETED": audit_service.ACTION_TASK_COMPLETED,
+            "FAILED": audit_service.ACTION_TASK_FAILED,
+        }.get(new_status, audit_service.ACTION_TASK_STATUS_UPDATED)
+    )
     await audit_service.record(
         db, actor=actor, action=action, resource_type="agent_task", resource_id=task_id,
-        extra={"from_status": old_status, "status": new_status},
+        extra={
+            "from_status": old_status,
+            "status": new_status,
+            "override": is_override,
+            "override_role": actor_role if is_override else None,
+        },
     )
     return task
 
@@ -154,20 +289,32 @@ async def submit_finding(
     db: AsyncSession,
     payload: FindingCreate,
     actor: str = "system",
+    actor_role: str = "AGENT",
+    override: bool = False,
 ) -> Finding:
     """Submit an agent result (Finding) for a task."""
     # Verify the task exists
     task_repo = AgentTaskRepository(db)
-    task = await task_repo.get_by_id(payload.task_id)
+    task = await task_repo.get_by_id_for_update(payload.task_id)
     if task is None:
         raise AgentTaskNotFoundError(payload.task_id)
 
     finding_repo = FindingRepository(db)
-    existing = await finding_repo.get_by_task_agent(payload.task_id, payload.agent_name)
-    if existing is not None:
-        # A task has one result per agent.  Returning it makes retries safe and
-        # avoids duplicate findings without requiring a distributed idempotency store.
-        return existing
+    existing = await finding_repo.get_by_task_submitted_by(payload.task_id, actor)
+    if actor_role == "AGENT":
+        # A retry from the same authenticated submitter is idempotent even
+        # after its task was completed and the lease was cleared.
+        if existing is not None:
+            return existing
+        _require_active_claim(task, actor)
+    elif actor_role in {"ADMIN", "ANALYST"}:
+        if not override:
+            raise TaskOverrideRequiredError("finding submissions")
+        if existing is not None:
+            return existing
+    else:
+        raise TaskOverrideRequiredError("finding submissions")
+
     now = datetime.now(timezone.utc)
 
     event = None
@@ -221,6 +368,7 @@ async def submit_finding(
         finding_id=str(uuid.uuid4()),
         task_id=payload.task_id,
         agent_name=payload.agent_name,
+        submitted_by=actor,
         status=payload.status,
         confidence=payload.confidence,
         summary=payload.summary,
@@ -242,7 +390,9 @@ async def submit_finding(
         existing = await finding_repo.get_by_task_agent(payload.task_id, payload.agent_name)
         if existing is None:
             raise exc
-        return existing
+        if existing.submitted_by == actor:
+            return existing
+        raise FindingConflictError(payload.task_id, payload.agent_name) from exc
 
     # A result closes the investigation attempt, but failed evidence remains
     # visibly failed rather than being misreported as a successful task.
@@ -250,6 +400,8 @@ async def submit_finding(
         task.status = "FAILED" if payload.status == "FAILED" else "COMPLETED"
         task.completed_at = now
         task.updated_at = now
+        task.claimed_by = None
+        task.claim_expires_at = None
         await task_repo.update(task)
         await audit_service.record(
             db,
@@ -267,18 +419,27 @@ async def submit_finding(
     await audit_service.record(
         db,
         actor=actor,
-        action=audit_service.ACTION_FINDING_SUBMITTED,
+        action=(
+            audit_service.ACTION_FINDING_SUBMITTED_OVERRIDE
+            if actor_role in {"ADMIN", "ANALYST"} and override
+            else audit_service.ACTION_FINDING_SUBMITTED
+        ),
         resource_type="finding",
         resource_id=finding.finding_id,
         extra={
             "task_id": finding.task_id,
             "agent_name": finding.agent_name,
+            "submitted_by": finding.submitted_by,
             "status": finding.status,
             "confidence": finding.confidence,
             "severity": finding.severity,
             "source": finding.source,
             "event_id": finding.event_id,
             "incident_id": finding.incident_id,
+            "override": actor_role in {"ADMIN", "ANALYST"} and override,
+            "override_role": actor_role
+            if actor_role in {"ADMIN", "ANALYST"} and override
+            else None,
         },
     )
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from intriqo.db.models.agent_task import AgentTask
@@ -20,7 +20,19 @@ class AgentTaskRepository:
 
     async def get_by_id(self, task_id: str) -> AgentTask | None:
         result = await self._db.execute(
-            select(AgentTask).where(AgentTask.task_id == task_id)
+            select(AgentTask)
+            .where(AgentTask.task_id == task_id)
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_id_for_update(self, task_id: str) -> AgentTask | None:
+        """Load one task while serializing its short control-plane mutation."""
+        result = await self._db.execute(
+            select(AgentTask)
+            .where(AgentTask.task_id == task_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         return result.scalar_one_or_none()
 
@@ -34,6 +46,45 @@ class AgentTaskRepository:
         await self._db.flush()
         await self._db.refresh(task)
         return task
+
+    async def claim(
+        self,
+        task_id: str,
+        identity: str,
+        lease_seconds: int,
+    ) -> AgentTask | None:
+        """Atomically claim an available task and return the updated task.
+
+        The conditional UPDATE is the concurrency boundary: two agents may
+        race, but only the winner can update an unclaimed/expired task.  The
+        transaction is left to the request dependency to commit after this
+        short operation; no agent work is performed while it is open.
+        """
+        lease_interval = text(f"INTERVAL '{lease_seconds} seconds'")
+        statement = (
+            update(AgentTask)
+            .where(
+                AgentTask.task_id == task_id,
+                AgentTask.status.in_(("PENDING", "IN_PROGRESS")),
+                or_(
+                    AgentTask.claimed_by.is_(None),
+                    AgentTask.claim_expires_at <= func.now(),
+                    AgentTask.claimed_by == identity,
+                ),
+            )
+            .values(
+                claimed_by=identity,
+                claim_expires_at=func.now() + lease_interval,
+                status="IN_PROGRESS",
+                updated_at=func.now(),
+            )
+            .returning(AgentTask.task_id)
+        )
+        result = await self._db.execute(statement)
+        claimed_task_id = result.scalar_one_or_none()
+        if claimed_task_id is None:
+            return None
+        return await self.get_by_id(claimed_task_id)
 
     async def list(
         self,

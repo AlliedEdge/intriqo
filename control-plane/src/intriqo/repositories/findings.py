@@ -33,6 +33,17 @@ class FindingRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_task_submitted_by(
+        self, task_id: str, submitted_by: str
+    ) -> Finding | None:
+        result = await self._db.execute(
+            select(Finding).where(
+                Finding.task_id == task_id,
+                Finding.submitted_by == submitted_by,
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def list(
         self,
         *,

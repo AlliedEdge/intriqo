@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from intriqo.auth.dependencies import AgentUser, AnalystUser
+from intriqo.auth.dependencies import AgentOnlyUser, AgentUser, AnalystUser
 from intriqo.db.session import get_db
 from intriqo.repositories.agent_tasks import AgentTaskRepository
 from intriqo.schemas.agent_tasks import AgentTaskCreate, AgentTaskResponse, AgentTaskStatusUpdate
@@ -16,6 +16,12 @@ from intriqo.services.agent_task_service import (
     AgentTaskNotFoundError,
     InvalidStatusTransitionError,
     InvalidTaskTypeError,
+    TaskClaimConflictError,
+    TaskClaimExpiredError,
+    TaskNotClaimableError,
+    TaskNotOwnedError,
+    TaskOverrideRequiredError,
+    claim_task,
     create_task,
     update_task_status,
 )
@@ -30,6 +36,8 @@ def _to_response(task) -> AgentTaskResponse:
         description=task.description,
         priority=task.priority,
         status=task.status,
+        claimed_by=task.claimed_by,
+        claim_expires_at=task.claim_expires_at,
         idempotency_key=task.idempotency_key,
         event_id=task.event_id,
         incident_id=task.incident_id,
@@ -112,15 +120,50 @@ async def get_task(
     return _to_response(task)
 
 
+@router.post("/{task_id}/claim", response_model=AgentTaskResponse)
+async def claim(
+    task_id: str,
+    user: AgentOnlyUser,
+    db: AsyncSession = Depends(get_db),
+) -> AgentTaskResponse:
+    """Atomically acquire or renew a task lease for the authenticated agent."""
+    try:
+        task = await claim_task(db, task_id, user.username)
+    except AgentTaskNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": {"code": "TASK_NOT_FOUND", "message": str(e)}},
+        )
+    except TaskClaimConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": {"code": "TASK_CLAIM_CONFLICT", "message": str(e)}},
+        )
+    except TaskNotClaimableError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": {"code": "TASK_NOT_CLAIMABLE", "message": str(e)}},
+        )
+    return _to_response(task)
+
+
 @router.patch("/{task_id}", response_model=AgentTaskResponse)
 async def update_status(
     task_id: str,
     payload: AgentTaskStatusUpdate,
     user: AgentUser,
     db: AsyncSession = Depends(get_db),
+    override: bool = Query(False),
 ) -> AgentTaskResponse:
     try:
-        task = await update_task_status(db, task_id, payload.status, actor=user.username)
+        task = await update_task_status(
+            db,
+            task_id,
+            payload.status,
+            actor=user.username,
+            actor_role=user.role,
+            override=override,
+        )
     except AgentTaskNotFoundError as e:
         raise HTTPException(
             status_code=404,
@@ -130,5 +173,20 @@ async def update_status(
         raise HTTPException(
             status_code=409,
             detail={"error": {"code": "INVALID_STATUS_TRANSITION", "message": str(e)}},
+        )
+    except TaskClaimExpiredError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": {"code": "TASK_CLAIM_EXPIRED", "message": str(e)}},
+        )
+    except TaskNotOwnedError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": {"code": "TASK_NOT_OWNED", "message": str(e)}},
+        )
+    except TaskOverrideRequiredError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": {"code": "OVERRIDE_REQUIRED", "message": str(e)}},
         )
     return _to_response(task)
