@@ -303,6 +303,7 @@ def test_heartbeat_failure_suppresses_finding_and_failure_completion_write() -> 
 
     assert result.status == "FAILED"
     assert result.metadata["lease_unsafe"] is True
+    assert "lease_unsafe" not in result.error
     assert client.findings == []
     assert client.statuses == [("IN_PROGRESS", "lease-token")]
 
@@ -315,5 +316,6 @@ def test_malformed_heartbeat_response_is_treated_as_ownership_loss() -> None:
 
     assert result.status == "FAILED"
     assert result.metadata["lease_unsafe"] is True
+    assert "lease_unsafe" not in result.error
     assert client.findings == []
     assert client.statuses == [("IN_PROGRESS", "lease-token")]

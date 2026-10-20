@@ -239,7 +239,7 @@ class InvestigationAgent(Agent):
                 task_id,
                 self.name,
                 str(exc),
-                {"lease_unsafe": True},
+                metadata={"lease_unsafe": True},
             )
         except Exception as exc:  # noqa: BLE001 - failure is persisted, never silently swallowed
             lease_unsafe = heartbeat.unsafe if heartbeat is not None else False
@@ -251,9 +251,16 @@ class InvestigationAgent(Agent):
             except Exception:
                 logger.exception("Could not mark task %s FAILED", task_id)
             details: dict[str, Any] = {"exception_type": type(exc).__name__}
+            metadata: dict[str, Any] = {}
             if lease_unsafe:
-                details["lease_unsafe"] = True
-            return AgentResult.failure(task_id, self.name, str(exc), details)
+                metadata["lease_unsafe"] = True
+            return AgentResult.failure(
+                task_id,
+                self.name,
+                str(exc),
+                details,
+                metadata=metadata,
+            )
         finally:
             if heartbeat is not None:
                 heartbeat.stop_and_join()
